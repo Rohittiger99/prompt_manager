@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniPrompt</title>
+  <link rel="stylesheet" href="../styles/base.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body class="omni-textured">
+  <div class="popup-container">
+    <header class="header">
+      <div class="logo-row">
+        <div class="brand">
+          <span class="brand-badge">⚡</span>
+          <span class="brand-title">OMNIPROMPT</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" id="btn-popup-tier" class="popup-tier-badge" title="OmniPrompt Pro">PRO $25</button>
+          <div class="theme-switch" role="group" aria-label="Colour theme">
+            <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false">☀</button>
+            <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false">☾</button>
+            <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false">◐</button>
+          </div>
+          <button id="btn-open-guide" class="icon-btn" title="Guide and cheatsheet" aria-label="Open the guide">📖</button>
+          <button id="btn-open-options" class="icon-btn" title="Full library and settings" aria-label="Open the library and settings">⚙</button>
+        </div>
+      </div>
+
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search prompts and shortcuts…" autofocus autocomplete="off" spellcheck="false" aria-label="Search prompts" />
+        <button id="clear-search" class="clear-btn" style="display: none;" title="Clear search" aria-label="Clear search">✕</button>
+      </div>
+
+      <nav class="nav-tabs" role="tablist">
+        <button class="tab-btn active" data-tab="tab-prompts" role="tab" aria-selected="true">Prompts</button>
+        <button class="tab-btn" data-tab="tab-modifiers" role="tab" aria-selected="false">Modifiers</button>
+        <button class="tab-btn" data-tab="tab-new" role="tab" aria-selected="false">+ New</button>
+        <button class="tab-btn" data-tab="tab-data" role="tab" aria-selected="false">Data</button>
+      </nav>
+
+      <div id="category-bar" class="category-bar">
+        <button type="button" id="cat-scroll-left" class="cat-nav-btn cat-nav-left" title="Scroll left" aria-label="Scroll categories left" disabled>
+          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <div id="category-pills" class="category-pills" role="tablist" aria-label="Filter by category"></div>
+        <button type="button" id="cat-scroll-right" class="cat-nav-btn cat-nav-right" title="Scroll right" aria-label="Scroll categories right">
+          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Prompts -->
+      <div id="tab-prompts" class="tab-pane active" role="tabpanel">
+        <!-- Shown once, after the extension has been useful a number of times. -->
+        <div id="review-card" class="review-card" style="display: none;" role="status">
+          <div class="review-card-text">
+            <strong>Is OmniPrompt saving you time?</strong>
+            <span>A short review helps other people find it. It takes a minute.</span>
+          </div>
+          <div class="review-card-actions">
+            <button type="button" id="btn-review-yes" class="btn-primary btn-mini">Leave a review</button>
+            <button type="button" id="btn-review-no" class="btn-secondary btn-mini">No thanks</button>
+          </div>
+        </div>
+        <div id="prompts-list" class="prompts-list"></div>
+      </div>
+
+      <!-- Quick modifiers -->
+      <div id="tab-modifiers" class="tab-pane" role="tabpanel">
+        <div class="section-title">Wrap your draft in an instruction</div>
+        <p class="pane-note">
+          These act on text you have highlighted on the page, or on whatever is already
+          in the chat box. They are also on the right-click menu.
+        </p>
+        <div class="modifiers-grid" id="modifiers-list"></div>
+      </div>
+
+      <!-- Create / edit -->
+      <div id="tab-new" class="tab-pane" role="tabpanel">
+        <div class="pane-head">
+          <div class="section-title" id="new-prompt-heading">Create a prompt</div>
+          <button type="button" id="btn-open-full-editor" class="icon-btn pane-head-btn" title="Continue in the full editor">Full editor ↗</button>
+        </div>
+
+        <div id="popup-limit-banner" class="popup-limit-banner" style="display: none;">
+          <div class="limit-banner-text">
+            <strong>You have 25 of your own prompts, the Free maximum</strong>
+            <span>They all keep working. Pro adds unlimited prompts, version history and context blocks.</span>
+          </div>
+          <button type="button" id="btn-popup-banner-upgrade" class="btn-primary btn-mini">Pro · $25 once</button>
+        </div>
+
+        <form id="new-prompt-form" class="prompt-form">
+          <input type="hidden" id="new-id" />
+
+          <div class="form-group">
+            <label for="new-title">Title</label>
+            <input type="text" id="new-title" placeholder="e.g. FastAPI endpoint boilerplate" required />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <div class="label-with-action">
+                <label for="new-category">Category</label>
+                <button type="button" id="btn-popup-add-category" class="btn-link-action">+ New</button>
+              </div>
+              <select id="new-category"></select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="new-shortcut">Shortcut</label>
+              <input type="text" id="new-shortcut" placeholder="fastapi" autocomplete="off" />
+              <span class="field-note" id="shortcut-note">Type <span id="shortcut-preview">//fastapi</span> in any chat box.</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="new-tags">Tags</label>
+            <input type="text" id="new-tags" placeholder="python, api, backend" />
+          </div>
+
+          <div class="form-group">
+            <label for="new-description">Description</label>
+            <input type="text" id="new-description" placeholder="What this prompt is for" />
+          </div>
+
+          <div class="form-group">
+            <label for="new-template">Template</label>
+            <textarea id="new-template" rows="5" placeholder="Write a {{framework}} endpoint that does {{task}}…" required></textarea>
+
+            <div class="variable-token-helper">
+              <div class="token-helper-header">
+                <span>Insert a placeholder</span>
+              </div>
+              <div class="token-chips-bar">
+                <button type="button" class="token-chip" data-insert="{{variable}}" title="Asks you for a value each time">+ {{variable}}</button>
+                <button type="button" class="token-chip" data-insert="{{field|default_value}}" title="Pre-fills a default value that you can change">+ {{field | default}}</button>
+                <button type="button" class="token-chip auto" data-insert="{{date}}" title="Fills with today's date">+ {{date}}</button>
+              </div>
+              <span class="field-note" style="margin-top: 4px; display: block;">Tip: Use <code>{{variable}}</code> or <code>{{field|default}}</code>.</span>
+              <div class="token-helper-foot" id="variable-summary"></div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="btn-cancel-edit-popup" class="btn-secondary" style="display: none;">Cancel</button>
+            <button type="submit" id="btn-save-popup-prompt" class="btn-primary">Save prompt</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Data -->
+      <div id="tab-data" class="tab-pane" role="tabpanel">
+        <div class="section-title">Behaviour</div>
+        <div class="data-actions-list">
+
+          <div class="data-card">
+            <div class="data-card-info">
+              <span class="data-card-title">Turn off on this site</span>
+              <span class="data-card-desc" id="site-host">—</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-site-disabled" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="section-title" style="margin-top: 14px;">Backup</div>
+        <div class="data-actions-list">
+          <div class="data-card">
+            <div class="data-card-info">
+              <span class="data-card-title">Export your prompts</span>
+              <span class="data-card-desc" id="export-desc">Your own prompts, folders and favourites.</span>
+            </div>
+            <button id="btn-export-json" class="btn-secondary">Export</button>
+          </div>
+
+          <div class="data-card">
+            <div class="data-card-info">
+              <span class="data-card-title">Import</span>
+              <span class="data-card-desc">JSON, CSV, Markdown or a plain text list.</span>
+            </div>
+            <label class="btn-secondary file-upload-btn">
+              Import
+              <input type="file" id="import-file-input" style="display: none;" />
+            </label>
+          </div>
+
+          <div class="data-card">
+            <div class="data-card-info">
+              <span class="data-card-title">Restore the built-in library</span>
+              <span class="data-card-desc">Undoes your edits to the 110 built-in prompts and brings back any you deleted. Prompts you wrote yourself are not touched.</span>
+            </div>
+            <button id="btn-reset-defaults" class="btn-secondary">Restore</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span id="prompt-count">Loading…</span>
+      <span class="shortcut-hint" id="footer-shortcut-hint"></span>
+    </footer>
+  </div>
+
+  <!-- Variable fill, used for Copy and as a fallback when the page is unreachable -->
+  <div id="popup-variable-modal" class="popup-modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
+    <div class="popup-modal-content omni-textured">
+      <div class="popup-modal-header">
+        <div class="popup-modal-title">
+          <span>⚡ <span id="modal-prompt-title">Fill in the details</span></span>
+        </div>
+        <button class="icon-btn" id="btn-close-popup-modal" title="Close (Esc)" aria-label="Close">✕</button>
+      </div>
+      <div class="popup-modal-body" id="modal-fields-container"></div>
+      <div class="popup-modal-preview-section">
+        <div class="modal-preview-header">
+          <span>Preview</span>
+          <span class="tag-badge">Live</span>
+        </div>
+        <div class="modal-preview-box" id="modal-preview-text"></div>
+        <div class="modal-warning" id="modal-warning"></div>
+      </div>
+      <div class="popup-modal-footer">
+        <button class="btn-secondary" id="btn-modal-copy">Copy</button>
+        <button class="btn-primary" id="btn-modal-insert">Insert into page</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category creation modal with emoji icon pack -->
+  <div id="popup-category-modal" class="popup-modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
+    <div class="popup-modal-content omni-textured category-modal-content">
+      <div class="popup-modal-header">
+        <div class="popup-modal-title"><span id="popup-cat-modal-title">New Category</span></div>
+        <button class="icon-btn" id="btn-close-popup-cat-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="popup-modal-body">
+        <div class="form-group">
+          <label for="popup-cat-name">Category Name</label>
+          <input type="text" id="popup-cat-name" placeholder="e.g. Sales Outreach, Legal" autocomplete="off" required />
+          <span class="field-note" id="popup-cat-error"></span>
+        </div>
+        <div class="form-group">
+          <label>Category Icon</label>
+          <div class="emoji-picker-header">
+            <div class="selected-emoji-preview" id="popup-cat-preview">🏷️</div>
+            <div class="custom-emoji-input-wrap">
+              <input type="text" id="popup-cat-custom-emoji" maxlength="4" placeholder="Type or paste emoji" />
+              <span class="field-note">Pick an icon below or paste your own</span>
+            </div>
+          </div>
+          <div class="emoji-pack-tabs" id="popup-cat-emoji-tabs"></div>
+          <div class="emoji-pack-grid" id="popup-cat-emoji-grid"></div>
+        </div>
+      </div>
+      <div class="popup-modal-footer">
+        <button type="button" class="btn-secondary" id="btn-popup-cat-cancel">Cancel</button>
+        <button type="button" class="btn-primary" id="btn-popup-cat-save">Save Category</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="../data/defaultPrompts.js"></script>
+  <script src="../lib/theme.js"></script>
+  <script src="../lib/template.js"></script>
+  <script src="../lib/modifiers.js"></script>
+  <script src="../lib/importers.js"></script>
+  <script src="../lib/promptStore.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

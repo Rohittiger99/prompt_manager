@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniPrompt - Offline sandbox</title>
+  <style>
+    /*
+      This page deliberately does NOT load the extension's own scripts.
+
+      The old version pulled content/*.js in with <script src> tags, which meant
+      it tested a second, parallel wiring that could drift from the real thing,
+      and it broke as soon as a file was renamed. It now relies on the extension
+      injecting itself, exactly as it does on a real site, and reports clearly
+      when that has not happened.
+    */
+    * { box-sizing: border-box; }
+
+    body {
+      background-color: #0c0c0e;
+      background-image: radial-gradient(#27272a 0.75px, transparent 0.75px), radial-gradient(#27272a 0.75px, #0c0c0e 0.75px);
+      background-size: 20px 20px;
+      background-position: 0 0, 10px 10px;
+      color: #ededed;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 880px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .test-header {
+      border-bottom: 1px solid #27272a;
+      padding-bottom: 16px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .title-area h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      font-family: ui-monospace, monospace;
+      margin: 0;
+    }
+
+    .title-area p {
+      font-size: 13px;
+      color: #8e8e93;
+      margin: 4px 0 0 0;
+    }
+
+    .status-banner {
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid #2f2f36;
+      background: #141417;
+    }
+
+    .status-banner.ok {
+      border-color: #2b6132;
+      background: #101d13;
+      color: #c7ecd0;
+    }
+
+    .status-banner.bad {
+      border-color: #5c2a2a;
+      background: #1d1111;
+      color: #f2c7c7;
+    }
+
+    .status-banner code {
+      font-family: ui-monospace, monospace;
+      background: #1c1c20;
+      border: 1px solid #2f2f36;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 12px;
+    }
+
+    .card {
+      background: #141417;
+      border: 1px solid #28282d;
+      border-radius: 8px;
+      padding: 18px 22px;
+    }
+
+    .card h2 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 12px 0;
+      color: #f4f4f5;
+    }
+
+    .checks {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .checks li {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+      color: #c4c4c8;
+      line-height: 1.55;
+    }
+
+    .checks .num {
+      color: #71717a;
+      font-family: ui-monospace, monospace;
+      flex-shrink: 0;
+      min-width: 18px;
+    }
+
+    .checks strong { color: #ffffff; }
+
+    kbd {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      background: #222226;
+      border: 1px solid #3f3f46;
+      color: #d4d4d8;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    code {
+      font-family: ui-monospace, monospace;
+      font-size: 12.5px;
+      color: #d4d4d8;
+    }
+
+    .mock-chat-box {
+      background: #141417;
+      border: 1px solid #28282d;
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mock-box-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #f4f4f5;
+    }
+
+    .badge-sim {
+      font-size: 10px;
+      color: #8e8e93;
+      background: #1c1c20;
+      border: 1px solid #2a2a2f;
+      border-radius: 3px;
+      padding: 2px 7px;
+      font-weight: 400;
+    }
+
+    .sim-textarea,
+    .sim-contenteditable {
+      width: 100%;
+      min-height: 110px;
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      padding: 12px 14px;
+      color: #f4f4f5;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.6;
+      outline: none;
+      resize: vertical;
+    }
+
+    .sim-textarea:focus,
+    .sim-contenteditable:focus {
+      border-color: #52525b;
+    }
+
+    .sim-input {
+      width: 100%;
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: #f4f4f5;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .chat-bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #71717a;
+      font-family: ui-monospace, monospace;
+    }
+
+    .btn-test,
+    .btn-outline {
+      background: #202024;
+      border: 1px solid #2e2e33;
+      color: #d4d4d8;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 11.5px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .btn-test {
+      background: #ededed;
+      color: #0d0d0f;
+      border-color: #ffffff;
+      font-weight: 600;
+    }
+
+    .btn-outline:hover { background: #2b2b32; color: #ffffff; }
+    .btn-test:hover { background: #ffffff; }
+
+    .toolbar-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .log-box {
+      background: #09090b;
+      border: 1px solid #1f1f23;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: ui-monospace, monospace;
+      font-size: 11.5px;
+      color: #a1a1aa;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-box div { padding: 1px 0; }
+    .log-box .warn { color: #d4a72c; }
+    .log-box .good { color: #86efac; }
+
+    .scroll-spacer {
+      height: 70vh;
+      border-top: 1px dashed #27272a;
+      margin-top: 8px;
+      padding-top: 12px;
+      font-size: 12px;
+      color: #52525b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="test-header">
+      <div class="title-area">
+        <h1>⚡ OmniPrompt offline sandbox</h1>
+        <p>Plain textarea, rich contenteditable and a single-line input, with nothing but the real extension driving them.</p>
+      </div>
+      <div>
+        <button id="btn-manual-palette" class="btn-outline">Open the palette</button>
+      </div>
+    </div>
+
+    <div id="status-banner" class="status-banner">Checking for OmniPrompt…</div>
+
+    <div class="card">
+      <h2>What to check</h2>
+      <ul class="checks">
+        <li>
+          <span class="num">1.</span>
+          <div>Type <kbd>//</kbd> in any box below. The menu should appear <strong>at your cursor</strong>. Keep typing to filter, then press <kbd>↵</kbd>.</div>
+        </li>
+        <li>
+          <span class="num">2.</span>
+          <div><strong>The draft test.</strong> Type a sentence, then <kbd>//review</kbd> at the end and pick the prompt. Your sentence must still be there, with the prompt inserted where the trigger was.</div>
+        </li>
+        <li>
+          <span class="num">3.</span>
+          <div><strong>The Escape test.</strong> Type <kbd>//</kbd>, press <kbd>Esc</kbd>, then type another letter. The menu must stay closed.</div>
+        </li>
+        <li>
+          <span class="num">4.</span>
+          <div><strong>The scroll test.</strong> Scroll down to the box at the bottom of this page and type <kbd>//</kbd>. The menu must appear at the cursor, not somewhere off-screen.</div>
+        </li>
+        <li>
+          <span class="num">5.</span>
+          <div>Press <kbd>Alt+K</kbd> for the palette. <kbd>↵</kbd> inserts, <kbd>Shift+↵</kbd> inserts and sends, <kbd>Esc</kbd> closes and returns focus to the box.</div>
+        </li>
+        <li>
+          <span class="num">6.</span>
+          <div><strong>The paste test.</strong> Pick <kbd>//review</kbd> and paste <code>text.replace(/a/g, "$&amp;!")</code> into the Code field. The preview must show it unchanged.</div>
+        </li>
+        <li>
+          <span class="num">7.</span>
+          <div>Highlight some prose on this page, then right-click and choose a modifier, or use a button below.</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="mock-chat-box">
+      <div class="mock-box-title">
+        <span>Quick modifiers</span>
+        <span class="badge-sim">Acts on your selection, or on the draft</span>
+      </div>
+      <div class="toolbar-row" id="modifier-toolbar"></div>
+    </div>
+
+    <div class="mock-chat-box">
+      <div class="mock-box-title">
+        <span>Plain textarea</span>
+        <span class="badge-sim">DeepSeek, Copilot, most forms</span>
+      </div>
+      <textarea id="mock-textarea" class="sim-textarea" placeholder="Type a sentence, then // at the end…"></textarea>
+      <div class="chat-bottom-bar">
+        <span class="hint">#mock-textarea</span>
+        <button id="mock-send-btn-1" class="btn-test" aria-label="Send">Send ↵</button>
+      </div>
+    </div>
+
+    <div class="mock-chat-box">
+      <div class="mock-box-title">
+        <span>Rich contenteditable</span>
+        <span class="badge-sim">ChatGPT, Claude, Gemini</span>
+      </div>
+      <div id="mock-contenteditable" class="sim-contenteditable" contenteditable="true" role="textbox" aria-multiline="true"></div>
+      <div class="chat-bottom-bar">
+        <span class="hint">#mock-contenteditable</span>
+        <button id="mock-send-btn-2" class="btn-test" aria-label="Send">Send ↵</button>
+      </div>
+    </div>
+
+    <div class="mock-chat-box">
+      <div class="mock-box-title">
+        <span>Single-line input</span>
+        <span class="badge-sim">Search bars, the generic fallback</span>
+      </div>
+      <input type="text" id="mock-input" class="sim-input" placeholder="Type // here too…" />
+      <div class="chat-bottom-bar">
+        <span class="hint">#mock-input</span>
+        <button id="mock-send-btn-3" class="btn-test" aria-label="Send">Send ↵</button>
+      </div>
+    </div>
+
+    <div class="mock-chat-box">
+      <div class="mock-box-title">
+        <span>Event log</span>
+        <button id="btn-clear-logs" class="btn-outline" style="font-size: 10px; padding: 2px 6px;">Clear</button>
+      </div>
+      <div id="sim-log" class="log-box"></div>
+    </div>
+
+    <div class="scroll-spacer">
+      Scroll past this gap for the positioning test.
+    </div>
+
+    <div class="mock-chat-box">
+      <div class="mock-box-title">
+        <span>Bottom-of-page box</span>
+        <span class="badge-sim">Positioning test</span>
+      </div>
+      <textarea id="mock-textarea-bottom" class="sim-textarea" placeholder="Type // here. The menu must land at the cursor, not off-screen."></textarea>
+      <div class="chat-bottom-bar">
+        <span class="hint">#mock-textarea-bottom</span>
+        <button id="mock-send-btn-4" class="btn-test" aria-label="Send">Send ↵</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="test-page.js"></script>
+</body>
+</html>

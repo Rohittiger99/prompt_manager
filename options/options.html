@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniPrompt - Library and settings</title>
+  <link rel="stylesheet" href="../styles/base.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body class="omni-textured">
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">⚡</span>
+        <div class="brand-text">
+          <h1>OMNIPROMPT</h1>
+          <p>Prompt library and settings</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="prompts">
+          <span>📚</span> Library (<span id="sidebar-count">0</span>)
+        </button>
+        <button class="nav-item" data-view="editor">
+          <span>✍️</span> Editor
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span>⚙️</span> Settings
+        </button>
+        <button class="nav-item" data-view="data">
+          <span>💾</span> Backup &amp; import
+        </button>
+        <button class="nav-item" id="nav-btn-guide" type="button">
+          <span>📖</span> Guide &amp; sandbox ↗
+        </button>
+      </nav>
+
+      <div class="sidebar-categories">
+        <div class="sidebar-section-head">
+          <div class="sidebar-cat-title">Categories</div>
+          <button type="button" id="btn-add-category" class="btn-table btn-mini" title="Add custom category">+ Add</button>
+        </div>
+        <div class="cat-list" id="sidebar-cat-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-theme-row">
+          <span>Theme</span>
+          <div class="theme-switch" role="group" aria-label="Colour theme">
+            <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false">☀</button>
+            <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false">☾</button>
+            <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false">◐</button>
+          </div>
+        </div>
+        <div class="sidebar-stat" id="sidebar-stat"></div>
+      </div>
+    </aside>
+
+    <main class="main-body">
+      <!-- Library -->
+      <section id="view-prompts" class="view-panel active">
+        <div class="panel-header">
+          <div class="search-wrapper">
+            <input type="text" id="options-search" placeholder="Search by title, shortcut, tag or template text…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="header-actions">
+            <span class="filter-chip" id="active-filter"></span>
+            <button id="btn-create-new-prompt" class="btn-primary">+ New prompt</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="prompt-table">
+            <thead>
+              <tr>
+                <th class="col-fav" title="Favourite">★</th>
+                <th class="col-title">Title and shortcut</th>
+                <th class="col-category">Category</th>
+                <th class="col-template">Template</th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="prompt-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Editor -->
+      <section id="view-editor" class="view-panel">
+        <div class="panel-header">
+          <h2 id="editor-heading">New prompt</h2>
+          <button id="btn-cancel-edit" class="btn-secondary">Back to library</button>
+        </div>
+
+        <div class="editor-container">
+          <form id="editor-form">
+            <input type="hidden" id="edit-id" />
+
+            <div id="builtin-notice" class="editor-notice" style="display: none;">
+              This is one of the built-in prompts. Your changes are saved as an overlay,
+              so <strong>Restore the built-in library</strong> can always put it back.
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="edit-title">Title</label>
+                <input type="text" id="edit-title" placeholder="e.g. Distributed system architecture blueprint" required />
+              </div>
+              <div class="form-group flex-1">
+                <div class="label-with-action">
+                  <label for="edit-category">Category</label>
+                  <button type="button" id="btn-edit-add-category" class="btn-link-action">+ New</button>
+                </div>
+                <select id="edit-category"></select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="edit-shortcut">Shortcut</label>
+                <input type="text" id="edit-shortcut" placeholder="arch" autocomplete="off" />
+                <span class="field-note">Type <span id="edit-shortcut-preview">//arch</span> in any chat box. <span id="shortcut-clash" class="clash-warning"></span></span>
+              </div>
+              <div class="form-group flex-2">
+                <label for="edit-tags">Tags</label>
+                <input type="text" id="edit-tags" placeholder="architecture, scalability, backend" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="edit-description">Description</label>
+              <input type="text" id="edit-description" placeholder="One line on what this prompt is for" />
+            </div>
+
+            <div class="form-group">
+              <label for="edit-notes">Notes <span class="label-hint">(only you see these; search finds them)</span></label>
+              <textarea id="edit-notes" rows="3" placeholder="Why it works, which model it suits best, an example of a good answer…"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="edit-template">Template</label>
+              <textarea id="edit-template" rows="14" placeholder="You are an expert…&#10;&#10;Here is {{code}} written in {{language}}." required></textarea>
+
+              <div class="variable-token-helper">
+                <div class="token-helper-header">
+                  <span>Insert a placeholder</span>
+                </div>
+                <div class="token-chips-bar" id="options-token-chips">
+                  <button type="button" class="token-chip" data-insert="{{variable}}" title="Asks you for a value each time">+ {{variable}}</button>
+                  <button type="button" class="token-chip" data-insert="{{field|default_value}}" title="Pre-fills a default value that you can change">+ {{field | default}}</button>
+                  <button type="button" class="token-chip" data-insert="{{tone:Formal|Friendly|Direct}}" title="A dropdown. The first choice is the default">+ {{tone:A|B|C}} dropdown</button>
+                  <button type="button" class="token-chip auto" data-insert="{{selection}}" title="Fills with the text you highlighted on the page">+ {{selection}}</button>
+                  <button type="button" class="token-chip auto" data-insert="{{date}}" title="Fills with today's date">+ {{date}}</button>
+                  <button type="button" class="token-chip pro" data-insert="{{@shortcut}}" title="Pro: inserts another prompt's text, found by its shortcut">+ {{@block}} <span class="pro-mini">PRO</span></button>
+                </div>
+                <span class="field-note" style="margin-top: 6px; display: block;">
+                  <code>{{variable}}</code> asks each time. <code>{{language|Python}}</code> pre-fills a value.
+                  <code>{{tone:Formal|Friendly}}</code> shows a dropdown. <code>{{selection}}</code>, <code>{{page_title}}</code> and <code>{{url}}</code> fill themselves.
+                  <code>{{@client-brief}}</code> pulls in the prompt whose shortcut is <code>client-brief</code> (Pro).
+                </span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>What the fill-in form will ask for</label>
+              <div id="variable-preview" class="variable-preview"></div>
+            </div>
+
+            <div class="editor-actions">
+              <button type="button" id="btn-delete-prompt" class="btn-danger" style="display: none;">Delete</button>
+              <button type="button" id="btn-duplicate-prompt" class="btn-secondary" style="display: none;">Duplicate</button>
+              <button type="button" id="btn-revert-prompt" class="btn-secondary" style="display: none;" title="Discard your changes to this built-in prompt">Revert to built-in</button>
+              <button type="button" id="btn-prompt-history" class="btn-secondary" style="display: none;" title="See and restore earlier versions">History</button>
+              <button type="button" id="btn-export-skill" class="btn-secondary" title="Download this prompt as a SKILL.md file for Claude, ChatGPT or Mistral skills">Export SKILL.md</button>
+              <span class="editor-actions-spacer"></span>
+              <button type="submit" class="btn-primary">Save prompt</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="view-settings" class="view-panel">
+        <div class="panel-header">
+          <h2>Settings</h2>
+        </div>
+
+        <div class="settings-list">
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Appearance</div>
+              <div class="setting-desc">
+                Choose a light or dark skin for the popup, this page and the in-page menus.
+                <strong>System</strong> follows your operating system and changes with it.
+              </div>
+            </div>
+            <div class="setting-control-col">
+              <div class="theme-switch" role="group" aria-label="Colour theme">
+                <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false">☀</button>
+                <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false">☾</button>
+                <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false">◐</button>
+              </div>
+              <span class="field-note" id="theme-status"></span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Starter pack &amp; role</div>
+              <div class="setting-desc">
+                Select which built-in pack is active in your slash menu and search palette to prevent clutter.
+              </div>
+            </div>
+            <div class="setting-control-col">
+              <select id="setting-selected-role" class="setting-select">
+                <option value="all">All prompts (110 prompts)</option>
+                <option value="Coding">💻 Software Engineer (25 prompts)</option>
+                <option value="Writing">✍️ Writer &amp; Creator (20 prompts)</option>
+                <option value="Marketing">📈 Growth &amp; Marketing (20 prompts)</option>
+                <option value="SEO">🔍 SEO Specialist (15 prompts)</option>
+                <option value="Productivity">⚡ Productivity &amp; Ops (15 prompts)</option>
+                <option value="Personas">🎭 Expert Personas (15 prompts)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item pro-license-item" id="setting-license-card">
+            <div class="setting-info">
+              <div class="setting-title">
+                OmniPrompt Pro &amp; License
+                <span class="pro-tier-pill" id="license-tier-pill">Free Tier</span>
+              </div>
+              <div class="setting-desc" id="license-tier-desc">
+                Free includes all 110 built-in prompts and up to <strong><span id="custom-prompt-count">0</span> / 25</strong> of your own.
+                Pro is a one-time $25: unlimited prompts, version history and context blocks.
+              </div>
+              <div id="license-active-details" class="license-active-details" style="display: none;">
+                <div class="license-key-masked">License Key: <code id="license-masked-key">••••••••••••••••</code></div>
+                <div class="license-status-badge">✓ Lifetime licence active. It keeps working offline.</div>
+              </div>
+            </div>
+            <div class="setting-control-col license-action-col">
+              <div id="license-free-actions" class="license-actions">
+                <div class="license-input-group">
+                  <input type="text" id="input-license-key" class="setting-select input-license" placeholder="Enter license key" autocomplete="off" spellcheck="false" />
+                  <button type="button" id="btn-activate-license" class="btn-primary">Activate</button>
+                </div>
+                <a href="https://dodopayments.com" target="_blank" rel="noopener" id="link-buy-pro" class="btn-secondary btn-buy-pro">Get Pro for $25, once ↗</a>
+                <span class="field-note license-feedback" id="license-feedback"></span>
+              </div>
+              <div id="license-active-actions" style="display: none;">
+                <button type="button" id="btn-deactivate-license" class="btn-secondary btn-mini">Deactivate / Change Key</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Slash menu</div>
+              <div class="setting-desc">Type this prefix in any text box to open your prompt list at the cursor.</div>
+            </div>
+            <div class="setting-control-col">
+              <label class="switch-row">
+                <span>Enabled</span>
+                <span class="switch">
+                  <input type="checkbox" id="setting-slash-enabled" />
+                  <span class="switch-track"></span>
+                </span>
+              </label>
+              <select id="setting-slash-char" class="setting-select">
+                <option value="//">Double slash (//)</option>
+                <option value="/">Single slash (/)</option>
+                <option value=";;">Double semicolon (;;)</option>
+                <option value="!!">Double bang (!!)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">In-page palette shortcut</div>
+              <div class="setting-desc">
+                Opens the search overlay on any page. Click the box below and press your combination.
+              </div>
+              <div class="hotkey-presets">
+                <span class="preset-label">Presets:</span>
+                <button type="button" class="btn-preset-hotkey" data-hotkey="Alt+K">Alt+K</button>
+                <button type="button" class="btn-preset-hotkey" data-hotkey="Alt+P">Alt+P</button>
+                <button type="button" class="btn-preset-hotkey" data-hotkey="Alt+O">Alt+O</button>
+                <button type="button" class="btn-preset-hotkey" data-hotkey="Alt+Shift+P">Alt+Shift+P</button>
+                <button type="button" class="btn-preset-hotkey" data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
+              </div>
+            </div>
+            <div class="hotkey-config-col">
+              <label class="switch-row">
+                <span>Enabled</span>
+                <span class="switch">
+                  <input type="checkbox" id="setting-palette-enabled" />
+                  <span class="switch-track"></span>
+                </span>
+              </label>
+              <div class="hotkey-recorder-box" id="hotkey-recorder" tabindex="0" role="button" title="Click, then press your key combination">
+                <span class="recorder-dot"></span>
+                <span id="hotkey-display-text">Alt+K</span>
+              </div>
+              <button type="button" id="btn-reset-hotkey" class="btn-table btn-mini">Reset to Alt+K</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Browser-level shortcut</div>
+              <div class="setting-desc">
+                Separate from the one above and managed by Chrome. It also opens the palette.
+                Current default: <kbd>Ctrl+Shift+K</kbd> (<kbd>Cmd+Shift+K</kbd> on macOS).
+              </div>
+            </div>
+            <button type="button" id="btn-open-chrome-shortcuts" class="btn-secondary">Change in Chrome ↗</button>
+          </div>
+
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Ranking</div>
+              <div class="setting-desc">Push favourites and prompts you use often to the top of every list.</div>
+            </div>
+            <div class="setting-control-col">
+              <label class="switch-row">
+                <span>Favourites first</span>
+                <span class="switch">
+                  <input type="checkbox" id="setting-rank-favorites" />
+                  <span class="switch-track"></span>
+                </span>
+              </label>
+              <label class="switch-row">
+                <span>Recently used first</span>
+                <span class="switch">
+                  <input type="checkbox" id="setting-rank-recents" />
+                  <span class="switch-track"></span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Sync across your devices</div>
+              <div class="setting-desc" id="sync-desc">
+                Off by default, so everything stays on this computer. When on, your own prompts,
+                folders, favourites and settings travel with your Chrome profile.
+                Chrome allows about 100KB, so very large libraries stay local.
+              </div>
+              <div class="sync-status" id="sync-status"></div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-sync-enabled" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Sites where OmniPrompt is off</div>
+              <div class="setting-desc">
+                Add a hostname to silence the slash menu and the palette there. You can also
+                toggle the current site straight from the toolbar popup.
+              </div>
+              <div class="disabled-sites" id="disabled-sites"></div>
+            </div>
+            <div class="setting-control-col">
+              <input type="text" id="new-disabled-site" class="setting-select" placeholder="example.com" />
+              <button type="button" id="btn-add-disabled-site" class="btn-secondary">Add site</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Backup and import -->
+      <section id="view-data" class="view-panel">
+        <div class="panel-header">
+          <h2>Backup &amp; import</h2>
+        </div>
+
+        <div class="settings-list">
+          <div class="setting-item backup-item">
+            <div class="setting-info">
+              <div class="setting-title">Automatic backups</div>
+              <div class="setting-desc">
+                OmniPrompt keeps a copy of your own prompts, edits and favourites once a day, and before
+                any import that replaces your library. The last 7 are kept on this computer.
+                Uninstalling the extension removes them, so download a file backup now and then.
+              </div>
+              <div class="backup-status" id="backup-status" role="status"></div>
+              <ul class="snapshot-list" id="snapshot-list"></ul>
+            </div>
+            <button id="btn-snapshot-now" class="btn-secondary">Back up now</button>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Export</div>
+              <div class="setting-desc" id="export-summary"></div>
+              <label class="checkbox-row">
+                <input type="checkbox" id="export-include-library" />
+                <span>Also include all 110 built-in prompts (a much larger file, only useful for archiving)</span>
+              </label>
+            </div>
+            <button id="btn-export-backup" class="btn-primary">Export JSON</button>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Import</div>
+              <div class="setting-desc">
+                Reads OmniPrompt backups, plain JSON lists, AIPRM exports, CSV or TSV with a
+                header row, <code>SKILL.md</code> skill files, Markdown where each heading is a prompt,
+                and plain text split on <code>---</code>. Moving from Gemini Gems or custom GPTs? Paste their
+                instructions into a text file and import it. Duplicates are skipped by title and template.
+              </div>
+              <label class="checkbox-row">
+                <input type="checkbox" id="import-replace-mode" />
+                <span>Replace my prompts instead of merging</span>
+              </label>
+            </div>
+            <label class="btn-secondary btn-file-inline">
+              Choose a file
+              <input type="file" id="options-import-file" style="display: none;" />
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-title">Restore the built-in library</div>
+              <div class="setting-desc" id="restore-summary">
+                Undoes your edits to built-in prompts and brings back any you deleted.
+              </div>
+            </div>
+            <button id="btn-factory-reset" class="btn-secondary">Restore built-ins</button>
+          </div>
+
+          <div class="setting-item danger-zone">
+            <div class="setting-info">
+              <div class="setting-title">Erase everything</div>
+              <div class="setting-desc">
+                Deletes your prompts, folders, favourites, usage history and settings from this
+                browser. This cannot be undone. Export first.
+              </div>
+            </div>
+            <button id="btn-erase-all" class="btn-danger">Erase all my data</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Variable fill, for copying a resolved prompt out of the library -->
+  <div id="options-variable-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
+    <div class="modal-content omni-textured">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⚡ <span id="opt-modal-prompt-title">Fill in the details</span></span>
+        </div>
+        <button class="btn-table" id="btn-close-opt-modal" title="Close (Esc)" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="opt-modal-fields-container"></div>
+      <div class="modal-preview-section">
+        <div class="modal-preview-header">
+          <span>Preview</span>
+          <span class="tag-badge">Live</span>
+        </div>
+        <div class="modal-preview-box" id="opt-modal-preview-text"></div>
+        <div class="modal-warning" id="opt-modal-warning"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-opt-modal-cancel">Cancel</button>
+        <button class="btn-primary" id="btn-opt-modal-copy">Copy prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Small text prompt, replacing window.prompt -->
+  <div id="text-input-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
+    <div class="modal-content omni-textured modal-narrow">
+      <div class="modal-header">
+        <div class="modal-title"><span id="text-modal-title">Name</span></div>
+        <button class="btn-table" id="btn-close-text-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="text-modal-input" id="text-modal-label">Name</label>
+          <input type="text" id="text-modal-input" autocomplete="off" />
+          <span class="field-note" id="text-modal-note"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-text-modal-cancel">Cancel</button>
+        <button class="btn-primary" id="btn-text-modal-confirm">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category creation/edit modal with emoji picker -->
+  <div id="category-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
+    <div class="modal-content omni-textured category-modal-content">
+      <div class="modal-header">
+        <div class="modal-title"><span id="cat-modal-title">New Category</span></div>
+        <button class="btn-table" id="btn-close-cat-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cat-modal-id" />
+        <div class="form-group">
+          <label for="cat-modal-name">Category Name</label>
+          <input type="text" id="cat-modal-name" placeholder="e.g. Sales Outreach, Legal, Freelance" autocomplete="off" required />
+          <span class="field-note" id="cat-modal-error"></span>
+        </div>
+        <div class="form-group">
+          <label>Category Icon</label>
+          <div class="emoji-picker-header">
+            <div class="selected-emoji-preview" id="cat-modal-preview">🏷️</div>
+            <div class="custom-emoji-input-wrap">
+              <input type="text" id="cat-modal-custom-emoji" maxlength="4" placeholder="Type or paste emoji" />
+              <span class="field-note">Pick an icon below or paste your own</span>
+            </div>
+          </div>
+          <div class="emoji-pack-tabs" id="cat-modal-emoji-tabs"></div>
+          <div class="emoji-pack-grid" id="cat-modal-emoji-grid"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-cat-modal-cancel">Cancel</button>
+        <button class="btn-primary" id="btn-cat-modal-save">Save Category</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upgrade to Pro Modal -->
+  <div id="upgrade-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
+    <div class="modal-content omni-textured upgrade-modal-content">
+      <div class="modal-header">
+        <div class="modal-title"><span>⚡ <span id="upgrade-modal-title">Upgrade to OmniPrompt Pro</span></span></div>
+        <button class="btn-table" id="btn-close-upgrade-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="upgrade-banner">
+          <div class="upgrade-icon">👑</div>
+          <div class="upgrade-headline">
+            <h3>Supercharge Your AI Prompts</h3>
+            <p id="upgrade-modal-reason">You have reached the free tier limit of 25 custom prompts.</p>
+          </div>
+        </div>
+        <div class="upgrade-benefits">
+          <div class="benefit-item">
+            <span class="benefit-check">✓</span>
+            <div>
+              <strong>Unlimited prompts</strong>
+              <p>Save as many of your own prompts as you like. Free keeps 25.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-check">✓</span>
+            <div>
+              <strong>Version history</strong>
+              <p>Every edit keeps the last 20 versions of a prompt. Restore any of them in one click.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-check">✓</span>
+            <div>
+              <strong>Context blocks</strong>
+              <p>Write a client brief, persona or style guide once. Drop it into any prompt with <code>{{@its-shortcut}}</code>.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-check">✓</span>
+            <div>
+              <strong>Private, and pay once</strong>
+              <p>$25 one time. No subscription, no account, no tracking. Future updates included.</p>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="upgrade-activate-box">
+          <label for="upgrade-modal-key">Already have a license key?</label>
+          <div class="upgrade-input-row">
+            <input type="text" id="upgrade-modal-key" placeholder="Enter license key" autocomplete="off" spellcheck="false" />
+            <button type="button" id="btn-upgrade-modal-activate" class="btn-secondary">Activate</button>
+          </div>
+          <span class="field-note" id="upgrade-modal-feedback"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-upgrade-modal-cancel">Maybe Later</button>
+        <a href="https://dodopayments.com" target="_blank" rel="noopener" id="link-upgrade-modal-buy" class="btn-primary btn-checkout">Get Pro for $25, once ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Version history -->
+  <div id="history-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+    <div class="modal-content omni-textured">
+      <div class="modal-header">
+        <div class="modal-title"><span>🕘 <span id="history-modal-title">Earlier versions</span></span></div>
+        <button class="btn-table" id="btn-close-history-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="field-note" id="history-modal-note"></p>
+        <ul class="history-list" id="history-list"></ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-history-modal-done">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="../data/defaultPrompts.js"></script>
+  <script src="../lib/theme.js"></script>
+  <script src="../lib/template.js"></script>
+  <script src="../lib/modifiers.js"></script>
+  <script src="../lib/importers.js"></script>
+  <script src="../lib/promptStore.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

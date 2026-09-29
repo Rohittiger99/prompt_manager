@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniPrompt - Quick start guide</title>
+  <link rel="stylesheet" href="../styles/base.css">
+  <link rel="stylesheet" href="welcome.css">
+</head>
+<body class="omni-textured">
+  <div class="welcome-container">
+    <header class="top-nav">
+      <div class="brand"><span class="brand-badge">✦</span><span class="brand-title">OMNIPROMPT</span></div>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Ways to use it</a><a href="#templates" class="nav-link">Templates</a><a href="#magic-tokens" class="nav-link">Placeholders</a><a href="#privacy" class="nav-link">Privacy</a>
+        <div class="theme-switch" role="group" aria-label="Colour theme">
+          <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false">☀</button>
+          <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false">☾</button>
+          <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false">◐</button>
+        </div>
+        <button id="btn-open-options-page" data-open-options class="btn-primary">Open library <span aria-hidden="true">→</span></button>
+      </div>
+    </header>
+    <section class="hero-section">
+      <div class="pill-badge">Prompt workspace</div>
+      <h1 class="hero-title">Your best prompts.<br><em>Always within reach.</em></h1>
+      <p class="hero-subtitle">Save, find, and adapt the instructions you use most. OmniPrompt works across ChatGPT, Claude, Gemini, Perplexity, DeepSeek, Copilot, Grok, and any other text box.</p>
+      <div class="hero-actions"><button data-open-options class="btn-primary">Build your library <span aria-hidden="true">→</span></button><a href="#features" class="btn-secondary">See how it works</a></div>
+    </section>
+    <section id="onboarding" class="section role-section">
+      <div class="section-header">
+        <span class="section-tag">Step 1 of 1 — Personalize</span>
+        <h2 class="section-title">What do you use AI for most?</h2>
+        <p class="section-desc">Pick your primary workflow. OmniPrompt shows only that starter pack in your <code>//</code> menu, so the list stays short. Every pack is free, and you can switch or turn them all on any time in Settings.</p>
+      </div>
+
+      <div class="role-grid" id="role-grid">
+        <button type="button" class="role-card" data-role="Coding" aria-pressed="false">
+          <div class="role-card-top">
+            <span class="role-icon">💻</span>
+            <span class="role-count">25 prompts</span>
+          </div>
+          <h3 class="role-name">Software Engineer</h3>
+          <p class="role-desc">Code review, bug diagnostics, tests, architecture, Docker, SQL, and refactoring.</p>
+          <div class="role-tags"><code>//review</code><code>//debug</code><code>//tests</code></div>
+        </button>
+
+        <button type="button" class="role-card" data-role="Writing" aria-pressed="false">
+          <div class="role-card-top">
+            <span class="role-icon">✍️</span>
+            <span class="role-count">20 prompts</span>
+          </div>
+          <h3 class="role-name">Writer &amp; Creator</h3>
+          <p class="role-desc">Executive summaries, cold emails, articles, newsletters, tone shaping, and proofreading.</p>
+          <div class="role-tags"><code>//execsum</code><code>//coldemail</code><code>//article</code></div>
+        </button>
+
+        <button type="button" class="role-card" data-role="Marketing" aria-pressed="false">
+          <div class="role-card-top">
+            <span class="role-icon">📈</span>
+            <span class="role-count">20 prompts</span>
+          </div>
+          <h3 class="role-name">Growth &amp; Marketing</h3>
+          <p class="role-desc">Landing page heroes, value props, Google/Meta ads, funnels, Product Hunt, and pitches.</p>
+          <div class="role-tags"><code>//hero</code><code>//valprop</code><code>//metaads</code></div>
+        </button>
+
+        <button type="button" class="role-card" data-role="SEO" aria-pressed="false">
+          <div class="role-card-top">
+            <span class="role-icon">🔍</span>
+            <span class="role-count">15 prompts</span>
+          </div>
+          <h3 class="role-name">SEO Specialist</h3>
+          <p class="role-desc">Keyword clusters, meta tags, content gap analysis, schema markup, and internal linking.</p>
+          <div class="role-tags"><code>//seocluster</code><code>//metatags</code><code>//schema</code></div>
+        </button>
+
+        <button type="button" class="role-card" data-role="Productivity" aria-pressed="false">
+          <div class="role-card-top">
+            <span class="role-icon">⚡</span>
+            <span class="role-count">15 prompts</span>
+          </div>
+          <h3 class="role-name">Productivity &amp; Ops</h3>
+          <p class="role-desc">First-principles thinking, decision frameworks, GTD prioritization, and standups.</p>
+          <div class="role-tags"><code>//prioritize</code><code>//feynman</code><code>//decide</code></div>
+        </button>
+
+        <button type="button" class="role-card" data-role="Personas" aria-pressed="false">
+          <div class="role-card-top">
+            <span class="role-icon">🎭</span>
+            <span class="role-count">15 prompts</span>
+          </div>
+          <h3 class="role-name">Expert Personas</h3>
+          <p class="role-desc">Instant expert advisory: Principal Architect, CMO, UX Lead, Security Red Team, and VC.</p>
+          <div class="role-tags"><code>//p-architect</code><code>//p-cmo</code><code>//p-ux</code></div>
+        </button>
+      </div>
+
+      <div class="role-action-bar">
+        <button type="button" class="btn-all-prompts" id="btn-select-all-roles" data-role="all" aria-pressed="false">I want everything — enable all 110 prompts</button>
+        <div id="role-feedback" class="role-feedback-pill" style="display:none;"></div>
+      </div>
+    </section>
+
+    <section class="safe-note"><div class="safe-note-icon">✓</div><div><strong>Your draft stays safe.</strong><p>OmniPrompt inserts directly at your cursor. Your existing text stays in place safely.</p></div></section>
+    <section id="features" class="section">
+      <div class="section-header"><span class="section-tag">Four entry points</span><h2 class="section-title">Use the path that fits your flow.</h2><p class="section-desc">Move from a thought to a ready prompt without interrupting your work.</p></div>
+      <div class="features-grid">
+        <article class="feature-card feature-card-accent"><span class="card-number">01</span><div class="card-icon">//</div><h3 class="card-title">Type in any text box</h3><p class="card-desc">Type <code>//</code>, then a shortcut. The matching prompt list opens right at your cursor.</p><div class="code-preview"><span class="cmd-text">//debug</span><span class="dim-text">Root cause bug diagnostic</span></div><p class="card-foot">Press <kbd>Esc</kbd> to keep writing.</p></article>
+        <article class="feature-card"><span class="card-number">02</span><div class="card-icon">⌘</div><h3 class="card-title">Open the search palette</h3><p class="card-desc">Press <kbd>Alt+K</kbd> to search your full library. Favourites and recent prompts come first.</p><div class="code-preview"><span class="cmd-text">Alt + K</span><span class="dim-text">Search everything</span></div><p class="card-foot"><kbd>Shift+↵</kbd> inserts and sends. <kbd>Ctrl+Shift+K</kbd> opens the browser command.</p></article>
+        <article class="feature-card"><span class="card-number">03</span><div class="card-icon">{ }</div><h3 class="card-title">Fill in the blanks</h3><p class="card-desc">Use <code>{{placeholders}}</code> in a prompt. OmniPrompt gives you a small form and a live preview.</p><div class="code-preview"><span class="cmd-text">{{topic}}</span><span class="dim-text">Becomes a field</span></div></article>
+        <article class="feature-card"><span class="card-number">04</span><div class="card-icon">✂</div><h3 class="card-title">Transform selected text</h3><p class="card-desc">Highlight text, right-click, and choose a modifier. It is ready for your chat box in one step.</p><div class="code-preview"><span class="cmd-text">Right click</span><span class="dim-text">12 quick modifiers</span></div></article>
+      </div>
+    </section>
+    <section id="templates" class="section template-section">
+      <div class="section-header section-header-left"><span class="section-tag">Reusable templates</span><h2 class="section-title">Write once. Make it specific every time.</h2><p class="section-desc">Add named placeholders to a prompt. OmniPrompt turns them into fields when you use it.</p></div>
+      <div class="template-demo-card">
+        <div class="template-step"><span class="step-label">01 — saved template</span><div class="template-code">You are a <mark>{{role}}</mark>. Write a <mark>{{tone|friendly}}</mark> email to <mark>{{client_name}}</mark> proposing a discount of <mark>{{discount_percent}}</mark>% on <mark>{{product}}</mark>.</div><p><code>{{tone|friendly}}</code> starts with a default value that you can change.</p></div>
+        <div class="template-step"><span class="step-label">02 — quick form</span><div class="example-fields"><div><span>Role</span><strong>Sales executive</strong></div><div><span>Tone</span><strong>friendly</strong></div><div><span>Client name</span><strong>Sarah Miller</strong></div><div><span>Discount</span><strong>20</strong></div><div><span>Product</span><strong>Enterprise plan</strong></div></div></div>
+        <div class="template-step template-result"><span class="step-label">03 — finished prompt</span><p>You are a <strong>Sales executive</strong>. Write a <strong>friendly</strong> email to <strong>Sarah Miller</strong> proposing a discount of <strong>20</strong>% on <strong>Enterprise plan</strong>.</p></div>
+      </div>
+    </section>
+    <section id="magic-tokens" class="section">
+      <div class="section-header"><span class="section-tag">Dynamic placeholders</span><h2 class="section-title">Smart templates that adapt to your work.</h2><p class="section-desc">Create reusable prompts with dynamic inputs, pre-filled fallbacks, or automatic timestamps.</p></div>
+      <div class="token-grid">
+        <article class="token-card"><code>{{variable}}</code><h3>Blank input field</h3><p>Asks you for information each time you run the prompt. E.g. <code>{{topic}}</code>, <code>{{customer_name}}</code>, or <code>{{code}}</code>.</p></article>
+        <article class="token-card"><code>{{field|default}}</code><h3>Pre-filled default value</h3><p>Starts with your usual answer already typed. Hit Enter to keep it, or change it when needed. E.g. <code>{{language|Python}}</code> or <code>{{tone|friendly}}</code>.</p></article>
+        <article class="token-card"><code>{{date}}</code><h3>Automatic today's date</h3><p>Automatically inserts today's date using your computer's clock. Perfect for daily standups, journaling, or timestamped notes.</p></article>
+      </div>
+    </section>
+    <section id="privacy" class="section privacy-section">
+      <div class="section-header section-header-left"><span class="section-tag">Privacy by default</span><h2 class="section-title">Your prompt library stays yours.</h2></div>
+      <div class="privacy-list"><div><strong>Local first</strong><p>Your prompts stay in browser storage. OmniPrompt has no account or analytics.</p></div><div><strong>Sync when you choose</strong><p>Chrome profile sync stays off unless you turn it on in Settings.</p></div><div><strong>Zero clipboard snooping</strong><p>OmniPrompt never reads your clipboard in the background. Clipboard data is never accessed without an explicit user paste.</p></div><div><strong>Quiet where needed</strong><p>Turn OmniPrompt off for any site from the popup or Settings.</p></div></div>
+    </section>
+    <footer class="welcome-footer"><div><span class="brand-title">OMNIPROMPT</span><p>Build a library that keeps your best thinking close.</p></div><div class="chatbot-links"><a href="https://chatgpt.com" target="_blank" rel="noopener" class="chat-link">ChatGPT</a><a href="https://claude.ai" target="_blank" rel="noopener" class="chat-link">Claude</a><a href="https://gemini.google.com" target="_blank" rel="noopener" class="chat-link">Gemini</a><a href="https://perplexity.ai" target="_blank" rel="noopener" class="chat-link">Perplexity</a></div></footer>
+  </div>
+  <script src="../lib/theme.js"></script>
+  <script src="welcome.js"></script>
+</body>
+</html>

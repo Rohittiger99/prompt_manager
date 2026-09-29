@@ -1,0 +1,84 @@
+{
+  "manifest_version": 3,
+  "name": "OmniPrompt - Universal AI Prompt Manager",
+  "version": "2.0.0",
+  "description": "Offline prompt manager for ChatGPT, Claude, Gemini & any text box. Slash commands //, Alt+K palette, variables, and starter packs.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "OmniPrompt",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://live.dodopayments.com https://test.dodopayments.com"
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "exclude_matches": [
+        "*://chrome.google.com/webstore/*",
+        "*://chromewebstore.google.com/*"
+      ],
+      "js": [
+        "data/defaultPrompts.js",
+        "lib/theme.js",
+        "lib/template.js",
+        "lib/modifiers.js",
+        "lib/importers.js",
+        "lib/promptStore.js",
+        "content/adapters.js",
+        "content/variableModal.js",
+        "content/slashTrigger.js",
+        "content/commandPalette.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/content.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "commands": {
+    "toggle-command-palette": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "Open the OmniPrompt command palette"
+    }
+  }
+}

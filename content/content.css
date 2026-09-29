@@ -1,0 +1,466 @@
+/**
+ * OmniPrompt - Injected shadow-DOM styles
+ *
+ * The overlays live in a shadow root, so they cannot share the extension
+ * pages' stylesheet. Tokens are declared twice here instead: once on :host for
+ * the light skin, once for the dark skin. content.js writes the resolved skin
+ * to data-omni-theme on the host, so 'system' is already decided by then and
+ * the page never sees the attribute.
+ */
+
+:host {
+  --surface: #ffffff;
+  --surface-2: #f6f9fc;
+  --surface-3: #ebf1f7;
+  --surface-sunken: #f8fafc;
+  --border: #dae4ee;
+  --border-strong: #c2d2e1;
+  --text: #0f1c2e;
+  --text-2: #4b5c72;
+  --text-3: #7a8a9d;
+  --accent: #1a6cb4;
+  --accent-hover: #145a99;
+  --accent-ink: #ffffff;
+  --accent-soft: #e7f1fa;
+  --accent-line: #b3d5ef;
+  --good: #12795a;
+  --good-soft: #e5f5ee;
+  --good-line: #b1dcc8;
+  --warn: #9a5e0c;
+  --warn-soft: #fff5e3;
+  --warn-line: #eed09a;
+  --star: #cf8b16;
+  --scrim: rgba(9, 18, 30, .38);
+  --ring: rgba(26, 108, 180, .32);
+  --shadow-menu: 0 18px 44px rgba(15, 28, 46, .2);
+  --shadow-modal: 0 26px 64px rgba(15, 28, 46, .28);
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  all: initial;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:host([data-omni-theme='dark']) {
+  --surface: #151d27;
+  --surface-2: #1a232f;
+  --surface-3: #212c39;
+  --surface-sunken: #101821;
+  --border: #28333f;
+  --border-strong: #3a4756;
+  --text: #e8eef6;
+  --text-2: #a7b6c7;
+  --text-3: #7d8c9e;
+  --accent: #57a6e4;
+  --accent-hover: #78bbf0;
+  --accent-ink: #08131e;
+  --accent-soft: #16293a;
+  --accent-line: #2c4b68;
+  --good: #57c69c;
+  --good-soft: #10261f;
+  --good-line: #24463a;
+  --warn: #e0aa5e;
+  --warn-soft: #29210f;
+  --warn-line: #4a3a1a;
+  --star: #e8b44b;
+  --scrim: rgba(4, 8, 13, .62);
+  --ring: rgba(87, 166, 228, .4);
+  --shadow-menu: 0 18px 44px rgba(0, 0, 0, .6);
+  --shadow-modal: 0 26px 64px rgba(0, 0, 0, .72);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.omni-textured { background-color: var(--surface); }
+
+/* =========================================================
+   SLASH MENU
+   =========================================================
+   Fixed, not absolute. The caret coordinates that drive top/left come from
+   getBoundingClientRect, which is viewport-relative. As an absolutely
+   positioned element the menu resolved against the initial containing block
+   instead, so on any scrolled page it drifted by the scroll offset. */
+.omni-slash-menu {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  width: 404px;
+  max-height: 384px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-menu);
+  animation: omniFadeIn .13s cubic-bezier(.32, .72, .32, 1);
+}
+
+.omni-slash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.omni-slash-title,
+.omni-category-badge {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.omni-slash-hint { color: var(--text-3); font: 10px var(--mono); }
+
+.omni-slash-list { max-height: 322px; margin: 0; padding: 6px; overflow-y: auto; list-style: none; }
+
+.omni-slash-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  padding: 8px 10px;
+  transition: background-color .12s, border-color .12s;
+}
+
+.omni-slash-item:hover,
+.omni-slash-item.selected,
+.omni-palette-item:hover,
+.omni-palette-item.selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.omni-slash-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.omni-slash-item-name { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 13px; font-weight: 700; }
+
+.omni-slash-item-shortcut,
+.omni-tag-pill,
+.omni-slash-flag,
+.omni-palette-count,
+.omni-kbd,
+.omni-form-auto-badge {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  padding: 1px 5px;
+  font: 9.5px var(--mono);
+  white-space: nowrap;
+}
+.omni-slash-flag { margin-left: 6px; font-weight: 700; }
+.omni-palette-count { flex-shrink: 0; margin-left: 8px; border-radius: 10px; padding: 1px 7px; }
+
+.omni-slash-item-desc,
+.omni-palette-item-desc {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.omni-empty-state { padding: 26px; color: var(--text-3); text-align: center; font-size: 12px; }
+
+/* =========================================================
+   COMMAND PALETTE
+   ========================================================= */
+.omni-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 6vh 16px;
+  background: var(--scrim);
+  backdrop-filter: blur(5px);
+  animation: omniFadeIn .15s cubic-bezier(.32, .72, .32, 1);
+}
+
+.omni-palette-modal,
+.omni-variable-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 88vh;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+}
+
+.omni-palette-modal { width: 624px; max-width: 92vw; }
+
+.omni-palette-searchbox {
+  display: flex;
+  align-items: center;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.omni-palette-icon { width: 16px; height: 16px; margin-right: 12px; flex-shrink: 0; color: var(--text-3); }
+.omni-palette-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: 15px inherit; }
+.omni-palette-input::placeholder { color: var(--text-3); }
+
+.omni-palette-content { display: flex; flex-direction: column; max-height: 448px; overflow-y: auto; padding: 6px; }
+
+/* The palette lists many categories, so headings stay visible while scrolling. */
+.omni-category-badge { position: sticky; top: 0; z-index: 1; background: var(--surface); padding: 9px 10px 5px; }
+
+.omni-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  padding: 10px 12px;
+  transition: background-color .12s, border-color .12s;
+}
+.omni-palette-item-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 78%; }
+.omni-palette-item-title { color: var(--text); font-size: 13px; font-weight: 700; }
+.omni-palette-item-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.omni-palette-footer,
+.omni-modal-footer {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+  padding: 11px 17px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
+}
+.omni-palette-footer { justify-content: space-between; }
+.omni-modal-footer { justify-content: flex-end; }
+.omni-kbd { margin: 0 2px; }
+
+/* =========================================================
+   VARIABLE FORM
+   ========================================================= */
+.omni-variable-modal { width: 584px; max-width: 92vw; }
+
+.omni-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.omni-modal-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.omni-modal-title { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; color: var(--text); font-size: 14px; font-weight: 750; }
+.omni-modal-title span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.omni-modal-back {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 5px 8px;
+  font-size: 14px;
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.omni-modal-back:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.omni-modal-close {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 5px;
+  font-size: 15px;
+  transition: background-color .12s, color .12s;
+}
+.omni-modal-close:hover { background: var(--surface-3); color: var(--text); }
+
+.omni-modal-body { display: flex; flex-direction: column; flex: 1 1 auto; gap: 15px; min-height: 0; max-height: 480px; overflow-y: auto; padding: 17px 18px; }
+.omni-form-group { display: flex; flex-direction: column; gap: 6px; }
+.omni-form-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.omni-form-label em { color: var(--text-3); font-style: normal; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.omni-form-label-right { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.omni-form-input,
+.omni-form-textarea {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  padding: 9px 11px;
+  font: 12.5px inherit;
+  transition: border-color .12s, box-shadow .12s;
+}
+.omni-form-textarea { min-height: 74px; resize: vertical; font-family: var(--mono); line-height: 1.6; }
+.omni-form-input::placeholder, .omni-form-textarea::placeholder { color: var(--text-3); }
+.omni-form-input:focus, .omni-form-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+
+/* Per-field Paste. Clipboard reads only ever happen from this click. */
+.omni-field-action {
+  min-width: 54px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 3px 7px;
+  font: 700 9.5px inherit;
+  letter-spacing: .05em;
+  text-align: center;
+  text-transform: uppercase;
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.omni-field-action:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+
+.omni-var-preview {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 7px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.omni-preview-box {
+  max-height: 122px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  color: var(--text-2);
+  padding: 10px 12px;
+  font: 11.5px var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.omni-var-warning {
+  display: none;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  padding: 6px 9px;
+  font-size: 11px;
+}
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+.omni-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  padding: 9px 14px;
+  font: 650 12px inherit;
+  transition: background-color .12s, border-color .12s, color .12s, transform .12s;
+}
+.omni-btn-secondary { border-color: var(--border-strong); background: var(--surface); color: var(--text); }
+.omni-btn-secondary:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.omni-btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.omni-btn-primary:hover { border-color: var(--accent-hover); background: var(--accent-hover); transform: translateY(-1px); }
+
+/* =========================================================
+   TOAST
+   ========================================================= */
+.omni-floating-toast {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 384px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  padding: 12px 17px;
+  font-size: 13px;
+  box-shadow: var(--shadow-modal);
+  pointer-events: none;
+  animation: omniFadeIn .15s cubic-bezier(.32, .72, .32, 1);
+  transition: opacity .25s ease, transform .25s ease;
+}
+.omni-floating-toast .toast-icon { flex-shrink: 0; color: var(--accent); font-size: 15px; }
+.omni-floating-toast span:last-child { font-weight: 500; line-height: 1.4; }
+.omni-floating-toast.omni-toast-hiding { opacity: 0; transform: translateY(6px); }
+
+/* =========================================================
+   ANIMATION, SCROLLBARS, FOCUS
+   ========================================================= */
+@keyframes omniFadeIn {
+  from { opacity: 0; transform: translateY(-5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 99px; background-clip: content-box; background-color: var(--border-strong); }
+::-webkit-scrollbar-thumb:hover { background-color: var(--text-3); }
+
+/* Keyboard focus must stay visible inside the shadow root, where the page's
+   own focus styles do not reach. */
+.omni-form-input:focus-visible,
+.omni-form-textarea:focus-visible,
+.omni-btn:focus-visible,
+.omni-field-action:focus-visible,
+.omni-palette-input:focus-visible,
+.omni-modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omni-slash-menu,
+  .omni-backdrop,
+  .omni-floating-toast {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Narrow viewports: let the overlays use the width they have. */
+@media (max-width: 480px) {
+  .omni-slash-menu { width: calc(100vw - 24px); }
+  .omni-palette-modal, .omni-variable-modal { width: calc(100vw - 24px); }
+  .omni-modal-footer { flex-wrap: wrap; }
+}
