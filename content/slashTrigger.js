@@ -18,6 +18,8 @@
  * - It repositions on scroll and resize instead of hanging in mid-air.
  * - Results are ranked by the shared store ranking, so favourites and
  *   frequently used prompts come first.
+ * - Pro chains appear as rows too. While one runs, "Next step" is pinned at
+ *   the top (type //next) and "End this chain" sits under it.
  */
 
 const SlashTrigger = (() => {
@@ -29,6 +31,8 @@ const SlashTrigger = (() => {
 
   let shadowRoot = null;
   let onSelect = null;
+  let onChainAction = null;
+  let getActiveChain = null;
   let menu = null;
 
   let isOpen = false;
@@ -57,11 +61,16 @@ const SlashTrigger = (() => {
     const opts = options || {};
     shadowRoot = root;
     onSelect = selectCallback;
+    if (typeof opts.onChainAction === 'function') onChainAction = opts.onChainAction;
+    if (typeof opts.getActiveChain === 'function') getActiveChain = opts.getActiveChain;
     if (typeof opts.triggerChar === 'string') triggerChar = opts.triggerChar;
     if (typeof opts.enabled === 'boolean') enabled = opts.enabled;
     if (typeof opts.maxResults === 'number') maxResults = opts.maxResults;
 
     document.addEventListener('input', handleInput, true);
+    // Input events during IME composition are skipped, so look again once the
+    // text is committed.
+    document.addEventListener('compositionend', handleInput, true);
     document.addEventListener('keydown', handleKeyDown, true);
     document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('focusout', handleFocusOut, true);
@@ -113,6 +122,9 @@ const SlashTrigger = (() => {
   }
 
   function handleInput(e) {
+    // Half-typed IME text (Chinese, Japanese, Korean) is not the user's query
+    // yet; compositionend runs this again with the committed text.
+    if (e.isComposing) return;
     if (!enabled || !triggerChar) {
       if (isOpen) close();
       return;
@@ -166,6 +178,10 @@ const SlashTrigger = (() => {
 
   function handleKeyDown(e) {
     if (!isOpen) return;
+    // While an IME is composing, Enter, Tab and the arrows belong to its
+    // candidate window. Safari reports the confirming Enter as keyCode 229
+    // with isComposing already false.
+    if (e.isComposing || e.keyCode === 229) return;
 
     switch (e.key) {
       case 'ArrowDown':
@@ -227,9 +243,63 @@ const SlashTrigger = (() => {
      Opening and positioning
      ===================================================================== */
 
+  /**
+   * The rows to show. Prompts as before; with Pro chains, a running chain's
+   * next step comes first (type //next), then chains whose shortcut matches.
+   */
   function currentResults() {
-    if (!window.OmniStore) return [];
-    return window.OmniStore.search({ query, limit: maxResults });
+    const store = window.OmniStore;
+    if (!store) return [];
+    const rows = [];
+    const q = String(query || '').toLowerCase();
+
+    const chain = getActiveChain ? getActiveChain() : null;
+    if (chain && (!q || 'next'.indexOf(q) === 0 || 'end'.indexOf(q) === 0)) {
+      rows.push({
+        kind: 'next',
+        id: chain.chainId,
+        title: 'Next: step ' + (chain.next + 1) + ' of ' + chain.total + ' · ' + chain.stepTitle,
+        description: chain.title,
+        shortcut: 'next'
+      });
+      rows.push({
+        kind: 'end',
+        id: chain.chainId,
+        title: 'End this chain',
+        description: 'Stops “' + chain.title + '”. Nothing is deleted.',
+        shortcut: 'end'
+      });
+    }
+
+    const chains = store.searchChains ? store.searchChains({ query, limit: 8 }) : [];
+    const exact = chains.filter((c) => c.shortcut && c.shortcut === q);
+    exact.forEach((c) => rows.push(chainRow(c)));
+
+    const host = typeof location !== 'undefined' ? location.hostname : '';
+    store.search({ query, limit: maxResults, host: host }).forEach((p) => {
+      rows.push({
+        kind: 'prompt',
+        id: p.id,
+        title: p.title,
+        description: p.description || '',
+        shortcut: p.shortcut || '',
+        payload: p
+      });
+    });
+
+    chains.filter((c) => exact.indexOf(c) === -1).forEach((c) => rows.push(chainRow(c)));
+    return rows;
+  }
+
+  function chainRow(c) {
+    return {
+      kind: 'chain',
+      id: c.id,
+      title: c.title,
+      description: c.description || c.steps.length + ' steps, one at a time',
+      shortcut: c.shortcut || '',
+      steps: c.steps.length
+    };
   }
 
   function open() {
@@ -347,30 +417,40 @@ const SlashTrigger = (() => {
 
     const rows = items
       .map((p, idx) => {
-        const fav = window.OmniStore && window.OmniStore.isFavorite(p.id);
-        const varCount = window.OmniTemplate ? window.OmniTemplate.variableCount(p) : 0;
+        const isPrompt = p.kind === 'prompt';
+        const fav = isPrompt && window.OmniStore && window.OmniStore.isFavorite(p.id);
+        const varCount = isPrompt && window.OmniTemplate ? window.OmniTemplate.variableCount(p.payload) : 0;
         const badges = [];
-        if (fav) badges.push('<span class="omni-slash-flag" title="Favourite">★</span>');
+        if (fav) badges.push('<span class="omni-slash-flag is-fav" title="Favourite">★</span>');
+        if (p.kind === 'chain') {
+          badges.push('<span class="omni-slash-flag" title="A chain of ' + p.steps + ' prompts">' + p.steps + ' steps</span>');
+        }
         if (varCount) {
           badges.push(
-            '<span class="omni-slash-flag" title="' +
+            '<span class="omni-slash-flag" title="A short form asks for ' +
+              varCount +
+              ' value' +
+              (varCount === 1 ? '' : 's') +
+              ' first">' +
               varCount +
               ' field' +
               (varCount === 1 ? '' : 's') +
-              ' to fill">' +
-              varCount +
-              ' ⌨</span>'
+              '</span>'
           );
         }
 
         return (
           '<li class="omni-slash-item' +
           (idx === selectedIndex ? ' selected' : '') +
+          (p.kind === 'next' ? ' omni-row-next' : '') +
           '" data-index="' +
           idx +
           '" role="option" aria-selected="' +
           (idx === selectedIndex) +
           '">' +
+          '<span class="omni-row-icon" aria-hidden="true">' +
+          escapeHtml(rowIcon(p)) +
+          '</span>' +
           '<div class="omni-slash-item-top">' +
           '<span class="omni-slash-item-name"><span>' +
           escapeHtml(p.title) +
@@ -390,21 +470,32 @@ const SlashTrigger = (() => {
       .join('');
 
     const headerTitle = query
-      ? items.length + ' match' + (items.length === 1 ? '' : 'es')
-      : 'All prompts (' + items.length + ')';
+      ? items.length + ' match' + (items.length === 1 ? '' : 'es') + ' for ' + prefix + query
+      : 'Your prompts (' + items.length + ')';
 
     menu.innerHTML =
       '<div class="omni-slash-header">' +
       '<span class="omni-slash-title">' +
       escapeHtml(headerTitle) +
       '</span>' +
-      '<span class="omni-slash-hint">↑↓ move · ↵ insert · Esc dismiss</span>' +
+      '<span class="omni-slash-hint"><span class="omni-kbd">↑</span><span class="omni-kbd">↓</span> <span class="omni-kbd">↵</span> insert · <span class="omni-kbd">Esc</span></span>' +
       '</div>' +
       '<ul class="omni-slash-list">' +
       rows +
       '</ul>';
 
     bindRows();
+  }
+
+  /** A category icon for prompts, a symbol for chain rows. */
+  function rowIcon(p) {
+    if (p.kind === 'chain') return '⛓';
+    if (p.kind === 'next') return '▶';
+    if (p.kind === 'end') return '■';
+    const store = window.OmniStore;
+    const category = p.payload && p.payload.category ? p.payload.category : 'Custom';
+    const meta = store && store.getCategoryMeta ? store.getCategoryMeta(category) : null;
+    return (meta && meta.icon) || '📝';
   }
 
   function bindRows() {
@@ -442,8 +533,8 @@ const SlashTrigger = (() => {
      Selection
      ===================================================================== */
 
-  function choose(prompt) {
-    if (!prompt) return;
+  function choose(row) {
+    if (!row) return;
 
     const target = activeElement;
     const length = tokenLength;
@@ -468,10 +559,19 @@ const SlashTrigger = (() => {
       open();
     };
 
+    const ctx = { target, replaceLength: length, caret, onBack: reopenThisMenu };
+
+    // Chains, the next step and "end chain" go to the coordinator's runner,
+    // which replaces the same typed token.
+    if (row.kind !== 'prompt') {
+      if (onChainAction) onChainAction(row.kind, row.id, ctx);
+      return;
+    }
+
     if (onSelect) {
       // The coordinator collects any variables, then replaces exactly the token
       // the user typed and nothing else.
-      onSelect(prompt, { target, replaceLength: length, caret, onBack: reopenThisMenu });
+      onSelect(row.payload, ctx);
     }
   }
 
@@ -489,11 +589,7 @@ const SlashTrigger = (() => {
     configure,
     open,
     close,
-    isOpen: () => isOpen,
-    getTriggerChar: () => triggerChar,
-    setTriggerChar(char) {
-      configure({ triggerChar: char });
-    }
+    isOpen: () => isOpen
   };
 })();
 

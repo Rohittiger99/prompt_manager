@@ -7,60 +7,88 @@
   <link rel="stylesheet" href="../styles/base.css">
   <link rel="stylesheet" href="popup.css">
 </head>
-<body class="omni-textured">
+<body>
   <div class="popup-container">
     <header class="header">
       <div class="logo-row">
         <div class="brand">
-          <span class="brand-badge">⚡</span>
-          <span class="brand-title">OMNIPROMPT</span>
+          <img class="brand-mark" src="../icons/icon48.png" alt="" width="22" height="22">
+          <span class="brand-title">OmniPrompt</span>
+          <button type="button" id="btn-popup-tier" class="popup-tier-badge" title="Your plan">Free</button>
         </div>
         <div class="header-actions">
-          <button type="button" id="btn-popup-tier" class="popup-tier-badge" title="OmniPrompt Pro">PRO $25</button>
-          <div class="theme-switch" role="group" aria-label="Colour theme">
-            <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false">☀</button>
-            <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false">☾</button>
-            <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false">◐</button>
-          </div>
-          <button id="btn-open-guide" class="icon-btn" title="Guide and cheatsheet" aria-label="Open the guide">📖</button>
-          <button id="btn-open-options" class="icon-btn" title="Full library and settings" aria-label="Open the library and settings">⚙</button>
+          <button type="button" id="btn-open-guide" class="icon-btn" title="How to use OmniPrompt" aria-label="Open the guide">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9.3a2.5 2.5 0 1 1 3.6 2.4c-.7.4-1.2 1-1.2 1.8v.3"></path><path d="M12 17.2h.01"></path></svg>
+          </button>
+          <button type="button" id="btn-open-options" class="icon-btn has-label" title="Open the full library and settings" aria-label="Open the library and settings">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect></svg>
+            <span>Library</span>
+          </button>
         </div>
       </div>
 
       <div class="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input type="text" id="search-input" placeholder="Search prompts and shortcuts…" autofocus autocomplete="off" spellcheck="false" aria-label="Search prompts" />
-        <button id="clear-search" class="clear-btn" style="display: none;" title="Clear search" aria-label="Clear search">✕</button>
+        <svg class="ico search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
+        <input type="text" id="search-input" placeholder="Search your prompts" autofocus autocomplete="off" spellcheck="false" aria-label="Search prompts" aria-controls="prompts-list" aria-describedby="search-hint" />
+        <span class="search-hint" id="search-hint" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd> <kbd>↵</kbd></span>
+        <button type="button" id="clear-search" class="clear-btn" hidden title="Clear search" aria-label="Clear search">
+          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
       </div>
 
-      <nav class="nav-tabs" role="tablist">
-        <button class="tab-btn active" data-tab="tab-prompts" role="tab" aria-selected="true">Prompts</button>
-        <button class="tab-btn" data-tab="tab-modifiers" role="tab" aria-selected="false">Modifiers</button>
-        <button class="tab-btn" data-tab="tab-new" role="tab" aria-selected="false">+ New</button>
-        <button class="tab-btn" data-tab="tab-data" role="tab" aria-selected="false">Data</button>
+      <!-- Pro: the client workspace that fills fields. Only shown when there is one to pick. -->
+      <div class="workspace-bar" id="workspace-bar" hidden>
+        <label for="workspace-select">Workspace</label>
+        <select id="workspace-select"></select>
+        <button type="button" id="workspace-clear-btn" class="workspace-clear-btn" hidden title="Clear active workspace" aria-label="Clear active workspace">✕</button>
+      </div>
+
+      <nav class="nav-tabs" role="tablist" aria-label="Popup sections">
+        <button type="button" class="tab-btn active" data-tab="tab-prompts" role="tab" aria-selected="true">Prompts</button>
+        <button type="button" class="tab-btn" data-tab="tab-modifiers" role="tab" aria-selected="false">Transform</button>
+        <button type="button" class="tab-btn" data-tab="tab-new" role="tab" aria-selected="false">+ New</button>
+        <button type="button" class="tab-btn" data-tab="tab-data" role="tab" aria-selected="false">More</button>
       </nav>
 
       <div id="category-bar" class="category-bar">
         <button type="button" id="cat-scroll-left" class="cat-nav-btn cat-nav-left" title="Scroll left" aria-label="Scroll categories left" disabled>
-          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
+          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
         </button>
         <div id="category-pills" class="category-pills" role="tablist" aria-label="Filter by category"></div>
         <button type="button" id="cat-scroll-right" class="cat-nav-btn cat-nav-right" title="Scroll right" aria-label="Scroll categories right">
-          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
+          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
         </button>
       </div>
     </header>
 
-    <main class="main-content">
+    <main class="main-content" id="main-content">
       <!-- Prompts -->
       <div id="tab-prompts" class="tab-pane active" role="tabpanel">
+        <!-- Site permission notice if on an uncovered site -->
+        <div id="site-permission-banner" class="site-perm-banner" hidden role="status">
+          <div class="site-perm-text">
+            <strong>OmniPrompt isn't turned on for this site yet.</strong>
+            <span id="site-perm-domain">Turn it on to use shortcuts and prompts here.</span>
+          </div>
+          <div class="site-perm-actions">
+            <button type="button" id="btn-enable-this-site" class="btn-primary btn-mini">Turn on for this site</button>
+            <button type="button" id="btn-enable-everywhere" class="btn-secondary btn-mini">Turn on everywhere</button>
+          </div>
+        </div>
+
+        <!-- Shown until the first prompt is used, or until "Got it". -->
+        <section id="quick-start" class="quick-start" hidden aria-labelledby="quick-start-title">
+          <div class="quick-start-head">
+            <strong id="quick-start-title">Use any prompt in a few keystrokes</strong>
+            <button type="button" id="btn-quick-start-dismiss" class="btn-link">Got it</button>
+          </div>
+          <ol class="quick-start-steps">
+            <li><span class="qs-key"><kbd id="quick-start-trigger">//</kbd></span><span>Type it in any text box, then a word such as <code>review</code>.</span></li>
+            <li><span class="qs-key"><kbd id="quick-start-hotkey">Alt+K</kbd></span><span>Search every prompt on any page.</span></li>
+            <li><span class="qs-key qs-click" aria-hidden="true">↵</span><span>Or pick one below. It goes where your cursor is.</span></li>
+          </ol>
+        </section>
+
         <!-- Shown once, after the extension has been useful a number of times. -->
         <div id="review-card" class="review-card" style="display: none;" role="status">
           <div class="review-card-text">
@@ -69,19 +97,21 @@
           </div>
           <div class="review-card-actions">
             <button type="button" id="btn-review-yes" class="btn-primary btn-mini">Leave a review</button>
-            <button type="button" id="btn-review-no" class="btn-secondary btn-mini">No thanks</button>
+            <button type="button" id="btn-review-no" class="btn-ghost btn-mini">No thanks</button>
           </div>
         </div>
-        <div id="prompts-list" class="prompts-list"></div>
+        <div id="prompts-list" class="prompts-list" role="listbox" aria-label="Prompts"></div>
       </div>
 
       <!-- Quick modifiers -->
       <div id="tab-modifiers" class="tab-pane" role="tabpanel">
-        <div class="section-title">Wrap your draft in an instruction</div>
-        <p class="pane-note">
-          These act on text you have highlighted on the page, or on whatever is already
-          in the chat box. They are also on the right-click menu.
-        </p>
+        <div class="pane-intro">
+          <div class="section-title">Transform text in one click</div>
+          <p class="pane-note">
+            Highlight text on the page, or leave a draft in the chat box, then pick an action.
+            OmniPrompt wraps it in the instruction and puts it in the box. These are also on the right-click menu.
+          </p>
+        </div>
         <div class="modifiers-grid" id="modifiers-list"></div>
       </div>
 
@@ -89,26 +119,64 @@
       <div id="tab-new" class="tab-pane" role="tabpanel">
         <div class="pane-head">
           <div class="section-title" id="new-prompt-heading">Create a prompt</div>
-          <button type="button" id="btn-open-full-editor" class="icon-btn pane-head-btn" title="Continue in the full editor">Full editor ↗</button>
+          <button type="button" id="btn-open-full-editor" class="btn-ghost btn-mini" title="Continue in the full editor">Full editor
+            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"></path></svg>
+          </button>
+        </div>
+
+        <!-- Free only: how many of the free slots are used. A status, not an ad. -->
+        <div id="popup-usage-meter" class="popup-usage-meter" hidden>
+          <div class="usage-meter-row">
+            <span id="popup-usage-label">0 of 20 of your own prompts</span>
+            <span class="usage-meter-note">Built-ins don't count</span>
+          </div>
+          <div class="usage-meter-track" role="progressbar" aria-labelledby="popup-usage-label" aria-valuemin="0" aria-valuemax="20" aria-valuenow="0" id="popup-usage-track">
+            <div class="usage-meter-fill" id="popup-usage-fill"></div>
+          </div>
         </div>
 
         <div id="popup-limit-banner" class="popup-limit-banner" style="display: none;">
           <div class="limit-banner-text">
-            <strong>You have 25 of your own prompts, the Free maximum</strong>
-            <span>They all keep working. Pro adds unlimited prompts, version history and context blocks.</span>
+            <strong id="popup-limit-title">20 of 20 prompts saved</strong>
+            <span>They all keep working. Pro removes the cap. Pay once.</span>
           </div>
-          <button type="button" id="btn-popup-banner-upgrade" class="btn-primary btn-mini">Pro · $25 once</button>
+          <button type="button" id="btn-popup-banner-upgrade" class="btn-primary btn-mini">Get Pro</button>
         </div>
 
         <form id="new-prompt-form" class="prompt-form">
           <input type="hidden" id="new-id" />
 
           <div class="form-group">
-            <label for="new-title">Title</label>
-            <input type="text" id="new-title" placeholder="e.g. FastAPI endpoint boilerplate" required />
+            <label for="new-title">Name <span class="req-mark" aria-hidden="true">*</span></label>
+            <input type="text" id="new-title" placeholder="e.g. Review my pull request" required aria-describedby="new-title-error" />
+            <span class="field-error" id="new-title-error" role="alert"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="new-template">Prompt text <span class="req-mark" aria-hidden="true">*</span></label>
+            <textarea id="new-template" rows="6" placeholder="Review this {{language}} code for bugs and readability:&#10;&#10;{{code}}" required aria-describedby="new-template-error"></textarea>
+            <span class="field-error" id="new-template-error" role="alert"></span>
+
+            <div class="variable-token-helper">
+              <div class="token-helper-header">
+                <span>Add a blank to fill in each time</span>
+              </div>
+              <div class="token-chips-bar">
+                <button type="button" class="token-chip" data-insert="{{variable}}" title="Asks you for a value each time">{{variable}}</button>
+                <button type="button" class="token-chip" data-insert="{{field|default_value}}" title="Pre-fills a default value that you can change">{{field|default}}</button>
+                <button type="button" class="token-chip auto" data-insert="{{date}}" title="Fills with today's date">{{date}}</button>
+              </div>
+              <div class="token-helper-foot" id="variable-summary"></div>
+            </div>
           </div>
 
           <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="new-shortcut">Shortcut</label>
+              <input type="text" id="new-shortcut" placeholder="review" autocomplete="off" spellcheck="false" aria-describedby="new-shortcut-error shortcut-note" />
+              <span class="field-error" id="new-shortcut-error" role="alert"></span>
+              <span class="field-note" id="shortcut-note">Type <span id="shortcut-preview">//review</span> in any text box.</span>
+            </div>
             <div class="form-group flex-1">
               <div class="label-with-action">
                 <label for="new-category">Category</label>
@@ -116,40 +184,21 @@
               </div>
               <select id="new-category"></select>
             </div>
-            <div class="form-group flex-1">
-              <label for="new-shortcut">Shortcut</label>
-              <input type="text" id="new-shortcut" placeholder="fastapi" autocomplete="off" />
-              <span class="field-note" id="shortcut-note">Type <span id="shortcut-preview">//fastapi</span> in any chat box.</span>
-            </div>
           </div>
 
-          <div class="form-group">
-            <label for="new-tags">Tags</label>
-            <input type="text" id="new-tags" placeholder="python, api, backend" />
-          </div>
-
-          <div class="form-group">
-            <label for="new-description">Description</label>
-            <input type="text" id="new-description" placeholder="What this prompt is for" />
-          </div>
-
-          <div class="form-group">
-            <label for="new-template">Template</label>
-            <textarea id="new-template" rows="5" placeholder="Write a {{framework}} endpoint that does {{task}}…" required></textarea>
-
-            <div class="variable-token-helper">
-              <div class="token-helper-header">
-                <span>Insert a placeholder</span>
+          <details class="more-fields">
+            <summary>Tags and description <span class="summary-note">optional</span></summary>
+            <div class="more-fields-body">
+              <div class="form-group">
+                <label for="new-tags">Tags</label>
+                <input type="text" id="new-tags" placeholder="code, review" />
               </div>
-              <div class="token-chips-bar">
-                <button type="button" class="token-chip" data-insert="{{variable}}" title="Asks you for a value each time">+ {{variable}}</button>
-                <button type="button" class="token-chip" data-insert="{{field|default_value}}" title="Pre-fills a default value that you can change">+ {{field | default}}</button>
-                <button type="button" class="token-chip auto" data-insert="{{date}}" title="Fills with today's date">+ {{date}}</button>
+              <div class="form-group">
+                <label for="new-description">Description</label>
+                <input type="text" id="new-description" placeholder="One line on what it is for" />
               </div>
-              <span class="field-note" style="margin-top: 4px; display: block;">Tip: Use <code>{{variable}}</code> or <code>{{field|default}}</code>.</span>
-              <div class="token-helper-foot" id="variable-summary"></div>
             </div>
-          </div>
+          </details>
 
           <div class="form-actions">
             <button type="button" id="btn-cancel-edit-popup" class="btn-secondary" style="display: none;">Cancel</button>
@@ -158,14 +207,16 @@
         </form>
       </div>
 
-      <!-- Data -->
+      <!-- More: this site, appearance and your data -->
       <div id="tab-data" class="tab-pane" role="tabpanel">
-        <div class="section-title">Behaviour</div>
+        <div class="section-title">This site</div>
         <div class="data-actions-list">
-
           <div class="data-card">
+            <span class="data-card-icon" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path></svg>
+            </span>
             <div class="data-card-info">
-              <span class="data-card-title">Turn off on this site</span>
+              <label class="data-card-title" for="setting-site-disabled">Turn off on this site</label>
               <span class="data-card-desc" id="site-host">—</span>
             </div>
             <label class="switch">
@@ -175,89 +226,122 @@
           </div>
         </div>
 
-        <div class="section-title" style="margin-top: 14px;">Backup</div>
+        <div class="section-title">Appearance</div>
         <div class="data-actions-list">
           <div class="data-card">
+            <span class="data-card-icon" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18" ></path><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"></path></svg>
+            </span>
+            <div class="data-card-info">
+              <span class="data-card-title">Theme</span>
+              <span class="data-card-desc">Also changes the menus in the page.</span>
+            </div>
+            <div class="theme-switch" role="group" aria-label="Colour theme">
+              <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></button>
+              <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"></path></svg></button>
+              <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title">Your data</div>
+        <div class="data-actions-list">
+          <div class="data-card">
+            <span class="data-card-icon" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg>
+            </span>
             <div class="data-card-info">
               <span class="data-card-title">Export your prompts</span>
               <span class="data-card-desc" id="export-desc">Your own prompts, folders and favourites.</span>
             </div>
-            <button id="btn-export-json" class="btn-secondary">Export</button>
+            <button type="button" id="btn-export-json" class="btn-secondary btn-mini">Export</button>
           </div>
 
           <div class="data-card">
+            <span class="data-card-icon" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M12 20V8"></path><path d="m7 13 5-5 5 5"></path><path d="M5 4h14"></path></svg>
+            </span>
             <div class="data-card-info">
               <span class="data-card-title">Import</span>
               <span class="data-card-desc">JSON, CSV, Markdown or a plain text list.</span>
             </div>
-            <label class="btn-secondary file-upload-btn">
+            <label class="btn-secondary btn-mini file-upload-btn">
               Import
-              <input type="file" id="import-file-input" style="display: none;" />
+              <input type="file" id="import-file-input" hidden />
             </label>
           </div>
 
           <div class="data-card">
+            <span class="data-card-icon" aria-hidden="true">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.2"></path><path d="M3.5 3.5v4.7h4.7"></path></svg>
+            </span>
             <div class="data-card-info">
               <span class="data-card-title">Restore the built-in library</span>
-              <span class="data-card-desc">Undoes your edits to the 110 built-in prompts and brings back any you deleted. Prompts you wrote yourself are not touched.</span>
+              <span class="data-card-desc">Undoes your edits to the built-in prompts and brings back any you deleted. Prompts you wrote yourself are not touched.</span>
             </div>
-            <button id="btn-reset-defaults" class="btn-secondary">Restore</button>
+            <button type="button" id="btn-reset-defaults" class="btn-secondary btn-mini">Restore</button>
           </div>
         </div>
+
+        <p class="pane-note more-foot">Backups, sync, shortcuts and every other setting are in the <button type="button" class="btn-link" id="btn-more-open-settings">library settings</button>.</p>
       </div>
     </main>
 
     <footer class="footer">
-      <span id="prompt-count">Loading…</span>
+      <span id="prompt-count" class="tabular">Loading…</span>
       <span class="shortcut-hint" id="footer-shortcut-hint"></span>
     </footer>
   </div>
 
   <!-- Variable fill, used for Copy and as a fallback when the page is unreachable -->
-  <div id="popup-variable-modal" class="popup-modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
-    <div class="popup-modal-content omni-textured">
+  <div id="popup-variable-modal" class="popup-modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-prompt-title">
+    <div class="popup-modal-content">
       <div class="popup-modal-header">
         <div class="popup-modal-title">
-          <span>⚡ <span id="modal-prompt-title">Fill in the details</span></span>
+          <span id="modal-prompt-title">Fill in the details</span>
         </div>
-        <button class="icon-btn" id="btn-close-popup-modal" title="Close (Esc)" aria-label="Close">✕</button>
+        <button type="button" class="icon-btn" id="btn-close-popup-modal" title="Close (Esc)" aria-label="Close">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
       </div>
       <div class="popup-modal-body" id="modal-fields-container"></div>
       <div class="popup-modal-preview-section">
         <div class="modal-preview-header">
-          <span>Preview</span>
-          <span class="tag-badge">Live</span>
+          <span>This is what will be inserted</span>
         </div>
         <div class="modal-preview-box" id="modal-preview-text"></div>
         <div class="modal-warning" id="modal-warning"></div>
       </div>
       <div class="popup-modal-footer">
-        <button class="btn-secondary" id="btn-modal-copy">Copy</button>
-        <button class="btn-primary" id="btn-modal-insert">Insert into page</button>
+        <span class="modal-foot-hint"><kbd>Ctrl</kbd><kbd>↵</kbd></span>
+        <button type="button" class="btn-secondary" id="btn-modal-copy">Copy</button>
+        <button type="button" class="btn-primary" id="btn-modal-insert">Insert into page</button>
       </div>
     </div>
   </div>
 
   <!-- Category creation modal with emoji icon pack -->
-  <div id="popup-category-modal" class="popup-modal-backdrop" style="display: none;" role="dialog" aria-modal="true">
-    <div class="popup-modal-content omni-textured category-modal-content">
+  <div id="popup-category-modal" class="popup-modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="popup-cat-modal-title">
+    <div class="popup-modal-content category-modal-content">
       <div class="popup-modal-header">
-        <div class="popup-modal-title"><span id="popup-cat-modal-title">New Category</span></div>
-        <button class="icon-btn" id="btn-close-popup-cat-modal" aria-label="Close">✕</button>
+        <div class="popup-modal-title"><span id="popup-cat-modal-title">New category</span></div>
+        <button type="button" class="icon-btn" id="btn-close-popup-cat-modal" aria-label="Close">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
       </div>
       <div class="popup-modal-body">
         <div class="form-group">
-          <label for="popup-cat-name">Category Name</label>
-          <input type="text" id="popup-cat-name" placeholder="e.g. Sales Outreach, Legal" autocomplete="off" required />
-          <span class="field-note" id="popup-cat-error"></span>
+          <label for="popup-cat-name">Name <span class="req-mark" aria-hidden="true">*</span></label>
+          <input type="text" id="popup-cat-name" placeholder="e.g. Sales outreach" autocomplete="off" required aria-describedby="popup-cat-error" />
+          <span class="field-error" id="popup-cat-error" role="alert"></span>
         </div>
         <div class="form-group">
-          <label>Category Icon</label>
+          <label for="popup-cat-custom-emoji">Icon</label>
           <div class="emoji-picker-header">
             <div class="selected-emoji-preview" id="popup-cat-preview">🏷️</div>
             <div class="custom-emoji-input-wrap">
-              <input type="text" id="popup-cat-custom-emoji" maxlength="4" placeholder="Type or paste emoji" />
-              <span class="field-note">Pick an icon below or paste your own</span>
+              <input type="text" id="popup-cat-custom-emoji" maxlength="4" placeholder="Type or paste an emoji" />
+              <span class="field-note">Or pick one below</span>
             </div>
           </div>
           <div class="emoji-pack-tabs" id="popup-cat-emoji-tabs"></div>
@@ -266,12 +350,12 @@
       </div>
       <div class="popup-modal-footer">
         <button type="button" class="btn-secondary" id="btn-popup-cat-cancel">Cancel</button>
-        <button type="button" class="btn-primary" id="btn-popup-cat-save">Save Category</button>
+        <button type="button" class="btn-primary" id="btn-popup-cat-save">Save category</button>
       </div>
     </div>
   </div>
 
-  <div id="toast" class="toast" role="status"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="../data/defaultPrompts.js"></script>
   <script src="../lib/theme.js"></script>

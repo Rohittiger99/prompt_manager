@@ -18,12 +18,12 @@
  * - One hotkey definition, read from settings. The old file's default (Alt+K),
  *   its own header comment (Ctrl+K) and the manifest command (Ctrl+Shift+K) all
  *   disagreed.
+ * - Pro: lists chains, pins "Next step" while one is running, and switches
+ *   the client workspace.
  */
 
 const CommandPalette = (() => {
   'use strict';
-
-  const GROUP_ORDER = ['Favourites', 'Recent', 'Quick Modifiers'];
 
   let shadowRoot = null;
   let onSelectPrompt = null;
@@ -33,6 +33,7 @@ const CommandPalette = (() => {
   let inputEl = null;
   let listEl = null;
   let countEl = null;
+  let previewEl = null;
 
   let isOpen = false;
   let enabled = true;
@@ -46,6 +47,8 @@ const CommandPalette = (() => {
   // box clears it, so {{selection}} would otherwise always come up empty.
   let openSelection = '';
   let onAction = null;
+  let onChainAction = null;
+  let getActiveChain = null;
   let lastToggleAt = 0;
   let lastQuery = '';
 
@@ -59,6 +62,8 @@ const CommandPalette = (() => {
     onSelectPrompt = handlers && handlers.onSelectPrompt;
     onRunModifier = handlers && handlers.onRunModifier;
     onAction = handlers && handlers.onAction;
+    onChainAction = handlers && handlers.onChainAction;
+    getActiveChain = handlers && handlers.getActiveChain;
     if (opts.hotkey) hotkey = opts.hotkey;
     if (typeof opts.enabled === 'boolean') enabled = opts.enabled;
 
@@ -103,6 +108,8 @@ const CommandPalette = (() => {
 
   function handleGlobalKeydown(e) {
     if (!enabled) return;
+    // Keys pressed while an IME is composing belong to the IME.
+    if (e.isComposing || e.keyCode === 229) return;
     if (!matchesHotkey(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -202,12 +209,16 @@ const CommandPalette = (() => {
       'autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="omni-palette-items" />' +
       '<span class="omni-palette-count" id="omni-palette-count"></span>' +
       '</div>' +
+      '<div class="omni-palette-body">' +
       '<div class="omni-palette-content" id="omni-palette-items" role="listbox"></div>' +
+      '<div class="omni-palette-preview" id="omni-palette-preview" aria-live="polite"></div>' +
+      '</div>' +
       '<div class="omni-palette-footer">' +
       '<div><span><span class="omni-kbd">↑</span><span class="omni-kbd">↓</span> move</span>' +
-      '<span style="margin-left:12px;"><span class="omni-kbd">↵</span> insert</span>' +
-      '<span style="margin-left:12px;"><span class="omni-kbd">⇧↵</span> insert &amp; send</span></div>' +
-      '<div><span class="omni-kbd">Esc</span> close</div>' +
+      '<span><span class="omni-kbd">↵</span> insert</span>' +
+      '<span><span class="omni-kbd">⇧↵</span> insert &amp; send</span>' +
+      '<span><span class="omni-kbd">Alt+C</span> compare</span></div>' +
+      '<div><span><span class="omni-kbd">Esc</span> close</span></div>' +
       '</div>' +
       '</div>';
 
@@ -216,6 +227,7 @@ const CommandPalette = (() => {
     inputEl = backdrop.querySelector('.omni-palette-input');
     listEl = backdrop.querySelector('#omni-palette-items');
     countEl = backdrop.querySelector('#omni-palette-count');
+    previewEl = backdrop.querySelector('#omni-palette-preview');
 
     inputEl.addEventListener('input', () => {
       lastQuery = inputEl.value;
@@ -248,23 +260,41 @@ const CommandPalette = (() => {
 
     if (!store) return groups;
 
+    const running = chainInProgressRows(q);
+    if (running.length) groups.push({ label: 'Chain in progress', items: running });
+
+    const chains = store.searchChains ? store.searchChains({ query: q, limit: q ? 10 : 8 }) : [];
+    const workspaces = workspaceRows(q);
+
+    const host = typeof location !== 'undefined' ? location.hostname : '';
+
     if (!q) {
-      const favourites = store.getFavorites();
+      const sitePrompts = store.search({ query: '', limit: 40, host: host }).filter((p) => p.forSite);
+      if (sitePrompts.length) {
+        groups.push({ label: 'For this site', items: sitePrompts.map(asPromptRow) });
+      }
+
+      const favourites = store.getFavorites().filter((p) => !sitePrompts.some((sp) => sp.id === p.id));
       if (favourites.length) {
         groups.push({ label: 'Favourites', items: favourites.map(asPromptRow) });
       }
 
-      const recents = store.getRecent(6).filter((p) => !store.isFavorite(p.id));
+      const recents = store
+        .getRecent(6)
+        .filter((p) => !store.isFavorite(p.id) && !sitePrompts.some((sp) => sp.id === p.id));
       if (recents.length) {
         groups.push({ label: 'Recent', items: recents.map(asPromptRow) });
       }
 
+      if (chains.length) groups.push({ label: 'Chains', items: chains.map(asChainRow) });
+      if (workspaces.length) groups.push({ label: 'Workspace', items: workspaces });
+
       const seen = {};
-      favourites.concat(recents).forEach((p) => {
+      sitePrompts.concat(favourites).concat(recents).forEach((p) => {
         seen[p.id] = true;
       });
 
-      const rest = store.search({ query: '', limit: 40 }).filter((p) => !seen[p.id]);
+      const rest = store.search({ query: '', limit: 40, host: host }).filter((p) => !seen[p.id]);
       byCategory(rest).forEach((g) => groups.push(g));
 
       groups.push({ label: 'Quick Modifiers', items: modifiers.map(asModifierRow) });
@@ -272,7 +302,7 @@ const CommandPalette = (() => {
       return groups;
     }
 
-    const prompts = store.search({ query: q, limit: 60 });
+    const prompts = store.search({ query: q, limit: 60, host: host });
     const matchedModifiers = modifiers.filter((m) => scoreModifier(m, q) > 0);
     const matchedActions = actionRows().filter((a) => scoreAction(a, q) > 0);
 
@@ -281,6 +311,8 @@ const CommandPalette = (() => {
     if (prompts.length) {
       groups.push({ label: 'Prompts', items: prompts.map(asPromptRow) });
     }
+    if (chains.length) groups.push({ label: 'Chains', items: chains.map(asChainRow) });
+    if (workspaces.length) groups.push({ label: 'Workspace', items: workspaces });
     if (matchedModifiers.length) {
       groups.push({ label: 'Quick Modifiers', items: matchedModifiers.map(asModifierRow) });
     }
@@ -300,7 +332,8 @@ const CommandPalette = (() => {
       {
         kind: 'action',
         id: 'save-as-prompt',
-        title: '💾 Save as a new prompt',
+        icon: '💾',
+        title: 'Save as a new prompt',
         description: openSelection
           ? 'Opens the editor with the text you selected on this page.'
           : 'Opens the editor with what is in the chat box now.',
@@ -358,9 +391,12 @@ const CommandPalette = (() => {
   function asPromptRow(p) {
     const store = window.OmniStore;
     const varCount = window.OmniTemplate ? window.OmniTemplate.variableCount(p) : 0;
+    const meta = store && store.getCategoryMeta ? store.getCategoryMeta(p.category || 'Custom') : null;
     return {
       kind: 'prompt',
       id: p.id,
+      icon: (meta && meta.icon) || '📝',
+      category: p.category || 'Custom',
       title: p.title,
       description: p.description || '',
       shortcut: p.shortcut || '',
@@ -371,11 +407,101 @@ const CommandPalette = (() => {
     };
   }
 
+  /** "Next step" and "End chain" while a Pro chain is running in this tab. */
+  function chainInProgressRows(q) {
+    const chain = getActiveChain ? getActiveChain() : null;
+    if (!chain) return [];
+    const needle = q.toLowerCase();
+    if (needle && ['next', 'end', 'chain', 'step'].every((w) => w.indexOf(needle) !== 0)) return [];
+    return [
+      {
+        kind: 'next',
+        id: chain.chainId,
+        icon: '▶',
+        title: 'Next: step ' + (chain.next + 1) + ' of ' + chain.total + ' · ' + chain.stepTitle,
+        description: chain.title,
+        shortcut: '',
+        tags: [],
+        favourite: false,
+        varCount: 0
+      },
+      {
+        kind: 'end',
+        id: chain.chainId,
+        icon: '■',
+        title: 'End this chain',
+        description: 'Stops “' + chain.title + '”. Nothing is deleted.',
+        shortcut: '',
+        tags: [],
+        favourite: false,
+        varCount: 0
+      }
+    ];
+  }
+
+  function asChainRow(c) {
+    return {
+      kind: 'chain',
+      id: c.id,
+      icon: '⛓',
+      title: c.title,
+      description: c.description || c.steps.length + ' steps, one at a time',
+      shortcut: c.shortcut || '',
+      tags: [c.steps.length + ' steps'],
+      favourite: false,
+      varCount: 0
+    };
+  }
+
+  /**
+   * Switch client from the palette (Pro). Listed with no query, or when the
+   * query names a workspace or says "workspace" or "client".
+   */
+  function workspaceRows(q) {
+    const store = window.OmniStore;
+    if (!store || !store.isPro || !store.isPro() || !store.getWorkspaces) return [];
+    const list = store.getWorkspaces();
+    if (!list.length) return [];
+    const needle = q.toLowerCase();
+    const generic = !needle || 'workspace'.indexOf(needle) === 0 || 'client'.indexOf(needle) === 0;
+    const active = store.getActiveWorkspace();
+    const activeId = active ? active.id : '';
+
+    const rows = list
+      .filter((w) => generic || w.name.toLowerCase().indexOf(needle) !== -1)
+      .map((w) => ({
+        kind: 'workspace',
+        id: w.id,
+        icon: w.id === activeId ? '✓' : '💼',
+        title: w.name,
+        description: w.id === activeId ? 'In use. Fields and blocks fill from here.' : 'Switch to this workspace',
+        shortcut: '',
+        tags: [w.fields.length + ' values'],
+        favourite: false,
+        varCount: 0
+      }));
+    if (rows.length && activeId && generic) {
+      rows.push({
+        kind: 'workspace',
+        id: '',
+        icon: '○',
+        title: 'No workspace',
+        description: 'Stop filling values from a workspace',
+        shortcut: '',
+        tags: [],
+        favourite: false,
+        varCount: 0
+      });
+    }
+    return rows;
+  }
+
   function asModifierRow(m) {
     return {
       kind: 'modifier',
       id: m.id,
-      title: (m.icon ? m.icon + ' ' : '') + m.title,
+      icon: m.icon || '✦',
+      title: m.title,
       description: m.description || '',
       shortcut: '',
       tags: [],
@@ -420,26 +546,36 @@ const CommandPalette = (() => {
 
   function renderRow(row, index) {
     const flags = [];
-    if (row.favourite) flags.push('<span class="omni-slash-flag" title="Favourite">★</span>');
+    if (row.favourite) flags.push('<span class="omni-slash-flag is-fav" title="Favourite">★</span>');
     if (row.varCount) {
       flags.push(
-        '<span class="omni-slash-flag" title="' +
+        '<span class="omni-slash-flag" title="A short form asks for ' +
+          row.varCount +
+          ' value' +
+          (row.varCount === 1 ? '' : 's') +
+          ' first">' +
           row.varCount +
           ' field' +
           (row.varCount === 1 ? '' : 's') +
-          ' to fill">' +
-          row.varCount +
-          ' ⌨</span>'
+          '</span>'
       );
     }
 
     return (
-      '<div class="omni-palette-item" data-index="' +
+      '<div class="omni-palette-item' +
+      (row.kind === 'next' ? ' omni-row-next' : '') +
+      '" data-index="' +
+      index +
+      '" id="omni-palette-row-' +
       index +
       '" role="option" aria-selected="false">' +
+      '<span class="omni-row-icon" aria-hidden="true">' +
+      escapeHtml(row.icon || '•') +
+      '</span>' +
       '<div class="omni-palette-item-left">' +
-      '<span class="omni-palette-item-title">' +
+      '<span class="omni-palette-item-title"><span>' +
       escapeHtml(row.title) +
+      '</span>' +
       flags.join('') +
       '</span>' +
       '<span class="omni-palette-item-desc">' +
@@ -447,11 +583,104 @@ const CommandPalette = (() => {
       '</span>' +
       '</div>' +
       '<div class="omni-palette-item-right">' +
-      row.tags.map((t) => '<span class="omni-tag-pill">' + escapeHtml(t) + '</span>').join('') +
-      (row.shortcut ? '<span class="omni-kbd">' + escapeHtml(row.shortcut) + '</span>' : '') +
+      (row.kind === 'prompt' ? '' : row.tags.map((t) => '<span class="omni-tag-pill">' + escapeHtml(t) + '</span>').join('')) +
+      (row.shortcut ? '<span class="omni-kbd">' + escapeHtml(slashPrefix() + row.shortcut) + '</span>' : '') +
       '</div>' +
       '</div>'
     );
+  }
+
+  /** The trigger the user types, so shortcuts read the way they are used. */
+  function slashPrefix() {
+    const store = window.OmniStore;
+    const s = store && store.getSettings ? store.getSettings() : null;
+    return s && s.slashEnabled && s.slashTriggerChar ? s.slashTriggerChar : '';
+  }
+
+  /* =====================================================================
+     Preview: the exact text the selected row will insert
+     ===================================================================== */
+
+  function paintPreview() {
+    if (!previewEl) return;
+    const row = rows[selectedIndex];
+    if (!row) {
+      previewEl.innerHTML = '';
+      return;
+    }
+
+    let label = '';
+    let text = '';
+    let head = '';
+    const meta = [];
+
+    if (row.kind === 'prompt' && row.payload) {
+      head = row.category;
+      label = row.varCount ? 'Inserts this, after a short form' : 'Inserts exactly this';
+      text = String(row.payload.template || '');
+      if (row.shortcut && slashPrefix()) meta.push('<span class="omni-kbd">' + escapeHtml(slashPrefix() + row.shortcut) + '</span>');
+      if (row.varCount) meta.push('<span class="omni-tag-pill">' + row.varCount + ' field' + (row.varCount === 1 ? '' : 's') + '</span>');
+      (row.payload.tags || []).slice(0, 3).forEach((t) => meta.push('<span class="omni-tag-pill">#' + escapeHtml(t) + '</span>'));
+    } else if (row.kind === 'modifier') {
+      head = 'Quick modifier';
+      label = openSelection ? 'Wraps the text you selected' : 'Wraps your selection, or the draft in the box';
+      const mod = window.OmniModifiers && window.OmniModifiers.getById ? window.OmniModifiers.getById(row.id) : null;
+      try {
+        text = mod && typeof mod.transform === 'function' ? mod.transform(openSelection ? clip(openSelection, 280) : '…your text…') : '';
+      } catch (e) {
+        text = '';
+      }
+    } else if (row.kind === 'chain') {
+      head = 'Chain';
+      label = 'Inserts step 1, then waits for you';
+    } else if (row.kind === 'next' || row.kind === 'end') {
+      head = 'Chain in progress';
+    } else if (row.kind === 'workspace') {
+      head = 'Workspace';
+    } else if (row.kind === 'action') {
+      head = 'Action';
+    }
+
+    previewEl.innerHTML =
+      '<div class="omni-pv-head"><span class="omni-row-icon" aria-hidden="true">' +
+      escapeHtml(row.icon || '•') +
+      '</span><span>' +
+      escapeHtml(head) +
+      '</span>' +
+      (row.kind === 'prompt' ? '<button type="button" class="omni-field-action omni-pv-compare-act" id="omni-pv-compare-act" title="Compare in several AIs (Alt+C)">Compare…</button>' : '') +
+      '</div>' +
+      '<div class="omni-pv-title">' +
+      escapeHtml(row.title) +
+      '</div>' +
+      (row.description ? '<div class="omni-pv-desc">' + escapeHtml(row.description) + '</div>' : '') +
+      (meta.length ? '<div class="omni-pv-meta">' + meta.join('') + '</div>' : '') +
+      (text
+        ? '<div class="omni-pv-label">' +
+          escapeHtml(label) +
+          '</div><div class="omni-pv-text">' +
+          markFields(clip(text, 1600)) +
+          '</div>'
+        : label
+        ? '<div class="omni-pv-label">' + escapeHtml(label) + '</div>'
+        : '');
+
+    const compBtn = previewEl.querySelector('#omni-pv-compare-act');
+    if (compBtn) {
+      compBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activateCompare(selectedIndex);
+      });
+    }
+  }
+
+  function clip(text, max) {
+    const s = String(text || '');
+    return s.length > max ? s.slice(0, max) + '…' : s;
+  }
+
+  /** Escape, then mark {{fields}} so the blanks stand out. */
+  function markFields(text) {
+    return escapeHtml(text).replace(/\{\{[^{}]{1,80}\}\}/g, (m) => '<span class="omni-pv-mark">' + m + '</span>');
   }
 
   function bindRows() {
@@ -478,6 +707,11 @@ const CommandPalette = (() => {
       nodes[i].setAttribute('aria-selected', String(on));
       if (on) nodes[i].scrollIntoView({ block: 'nearest' });
     }
+    if (inputEl) {
+      if (rows.length) inputEl.setAttribute('aria-activedescendant', 'omni-palette-row-' + selectedIndex);
+      else inputEl.removeAttribute('aria-activedescendant');
+    }
+    paintPreview();
   }
 
   /* =====================================================================
@@ -485,6 +719,15 @@ const CommandPalette = (() => {
      ===================================================================== */
 
   function handlePaletteKeydown(e) {
+    // The Enter that confirms an IME search term must not activate a row.
+    // Safari reports it as keyCode 229 with isComposing already false.
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.altKey && (e.key === 'c' || e.key === 'C')) {
+      if (!rows.length) return;
+      e.preventDefault();
+      activateCompare(selectedIndex);
+      return;
+    }
     switch (e.key) {
       case 'ArrowDown':
         if (!rows.length) return;
@@ -525,6 +768,20 @@ const CommandPalette = (() => {
     }
   }
 
+  function activateCompare(index) {
+    const row = rows[index];
+    if (!row || row.kind !== 'prompt') return;
+
+    const target = restoreTarget;
+    const caret = restoreCaret;
+    const selection = openSelection;
+    close();
+
+    if (onSelectPrompt) {
+      onSelectPrompt(row.payload, { target, caret, selection, compareMode: true, onBack: reopen });
+    }
+  }
+
   function activate(index, alsoSend) {
     const row = rows[index];
     if (!row) return;
@@ -540,6 +797,12 @@ const CommandPalette = (() => {
     }
     if (row.kind === 'action') {
       if (onAction) onAction(row.id, { target, caret, selection });
+      return;
+    }
+    if (row.kind === 'chain' || row.kind === 'next' || row.kind === 'end' || row.kind === 'workspace') {
+      if (onChainAction) {
+        onChainAction(row.kind, row.id, { target, caret, selection, submit: !!alsoSend, onBack: reopen });
+      }
       return;
     }
     if (onSelectPrompt) {
@@ -563,11 +826,7 @@ const CommandPalette = (() => {
     close,
     reopen,
     toggle,
-    isOpen: () => isOpen,
-    getHotkey: () => hotkey,
-    setHotkey(hk) {
-      configure({ hotkey: hk });
-    }
+    isOpen: () => isOpen
   };
 })();
 

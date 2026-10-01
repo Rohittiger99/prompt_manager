@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — OmniPrompt
 
-> Last Updated: 2026-09-29
+> Last Updated: 2026-09-30
 > Extension Version: 2.0.0
 
 ---
@@ -53,7 +53,7 @@ WHY OMNIPROMPT?
 • Never Lose a Prompt: Automatic daily backups on your computer, one-click restore, and a clear "last backup" status.
 • Never Fails Silently: If a site's text box refuses the text, OmniPrompt copies it to your clipboard and tells you.
 • Save From Anywhere: Highlight text on any page, right-click, and save it as a new prompt.
-• Role-Based Starter Packs: All 110 built-in prompts are free. Pick your role so your menu stays short.
+• Role-Based Starter Packs: All 136 built-in prompts are free. Pick your role so your menu stays short.
 • Instant Right-Click Modifiers: Highlight any text on any webpage to make it concise, fix grammar, generate test cases, or explain code.
 • Portable: Import and export SKILL.md files, the format Claude, ChatGPT and Mistral skills use.
 
@@ -63,7 +63,7 @@ FOUR WAYS TO USE OMNIPROMPT
 Type // in any message box to open your prompt menu directly at your cursor. Filter by typing, navigate with arrow keys, and press Enter or Tab to insert. Only the trigger command is replaced—the rest of your draft stays intact.
 
 2. COMMAND PALETTE (Alt+K)
-Press Alt+K (or Ctrl+Shift+K) anywhere on the web to open a lightning-fast search overlay. Search through your prompts, favourite frequent prompts with a star, or filter by category.
+Press Alt+K (or Ctrl+Shift+K) anywhere on the web to open a search overlay. Favourites and recent prompts come first, and a preview panel shows the exact text a prompt will insert before you pick it.
 
 3. DYNAMIC TEMPLATES WITH PLACEHOLDERS
 Add placeholders like {{code}} or {{audience|beginners}} to any prompt. OmniPrompt opens a clean input dialog with pre-filled defaults, a live preview, and one-click Insert or Copy.
@@ -72,14 +72,27 @@ Add placeholders like {{code}} or {{audience|beginners}} to any prompt. OmniProm
 Select text anywhere on the web, right-click, and select an action under OmniPrompt (Make Concise, Debug Code, Fix Grammar, Explain Simply, Extract Action Items). The formatted prompt drops directly into your active chat box.
 
 ORGANIZATION & CUSTOMIZATION
+• Learn it in a minute: the welcome page has a practice box where you type //, pick a prompt and fill it in before you try it on a real site.
+• A library you can read: browse prompts as cards or a list, and open any one to see its full text and the blanks its form will ask for.
 • Custom Categories with Curated Emoji Icons: Organize your collection with custom categories and emoji icons.
-• Built-In Prompt Library: 110 expertly crafted prompts across Coding, Writing, Marketing, SEO, Productivity, and Expert Personas.
+• Built-In Prompt Library: 136 prompts across Coding, Writing, Marketing, SEO, Productivity, Expert Personas and Client Work.
 • Favourites & Usage Ranking: Star your top prompts for instant top-row access; frequently used prompts float to the top automatically.
 • Import & Export: Backup your library to JSON, or easily import prompt collections from CSV, Markdown, text, and other prompt tools.
 
 PRICING
-• Free, forever: every insertion feature, all 110 built-in prompts, 25 prompts of your own, variables and dropdowns, modifiers, automatic backups, import and export. No credit card, no account.
-• Pro, $25 once: unlimited prompts of your own, version history (restore any of the last 20 versions of a prompt), and context blocks ({{@client-brief}} drops one saved prompt into another). Future updates included. No subscription.
+• Free, forever: every insertion feature, all 136 built-in prompts, 20 prompts of your own, variables and dropdowns, modifiers, automatic backups and restoring them, folders and tags, bulk edit, tidy-up, remembered answers, viewing and copying version history, import and export. No credit card, no account.
+• Pro, $25 once:
+  – Unlimited prompts of your own.
+  – Compare across AIs: send a prompt to up to 6 AI composers simultaneously (ChatGPT, Claude, Gemini, Copilot, Perplexity, DeepSeek) in tiled windows or tabs.
+  – Smart templates: conditionals, date arithmetic, required fields, and repeatable blocks.
+  – Custom modifiers: create up to 30 custom right-click and palette modifiers.
+  – Site rules: domain-based prompt ranking that puts relevant prompts first for specific sites.
+  – Client workspaces: switch client and every name, tone and brief fills in for that client.
+  – Saved value sets: refill a form in one click under a named set.
+  – Stepped chains: run a sequence of prompts one step at a time. You decide when to move on; nothing is sent for you.
+  – Folder sync: keep your library in a folder you choose, such as Dropbox or OneDrive, and share it between computers. No account and no server of ours.
+  – One-click restore for any of the last 20 versions of a prompt, and context blocks ({{@client-brief}} drops one saved prompt into another).
+  Future updates included. No subscription.
 • Over the free limit, nothing is taken away. Every prompt keeps working and exporting.
 
 PRIVACY & DATA SECURITY
@@ -87,6 +100,9 @@ PRIVACY & DATA SECURITY
 • OmniPrompt never reads your chats. It only types the text you choose into the box you are using.
 • No tracking, no user profiling, no analytics.
 • The only network request is to Dodo Payments, and only when you activate or deactivate a Pro licence key. It sends the key and the label "OmniPrompt Extension", nothing else.
+• Folder sync (Pro) only writes a file to a folder you pick. OmniPrompt uploads nothing; a cloud drive's own app moves the file if you choose one.
+• Compare across AIs opens tabs and types text only. It never reads answers, and there is no new network traffic.
+• Site rules use only the site address, evaluated locally on your computer.
 
 SUPPORT & FEEDBACK
 Have a question, feedback, or prompt pack suggestion? 
@@ -113,11 +129,13 @@ Target search queries in the Chrome Web Store:
 
 | Permission | Type | Justification for Review Team |
 |------------|------|-------------------------------|
-| `storage` | permissions | Used to save the user's custom prompts, folder categories, starred favourites, and UI settings locally in the browser. |
+| `storage` | permissions | Used to save the user's custom prompts, folders, categories, starred favourites, and UI settings locally in the browser. |
 | `unlimitedStorage` | permissions | Used to allow users to save large, multi-paragraph AI prompts, system instructions, and extensive prompt libraries locally without encountering browser storage quota caps. |
-| `contextMenus` | permissions | Used to display the right-click "OmniPrompt" menu options (e.g. "Make Concise", "Fix Grammar", "Explain This Code") when a user highlights text on a webpage. |
-| `scripting` | permissions | Used during extension install or update to inject the slash command listener and command palette into already-open tabs, ensuring functionality without forcing the user to manually reload all active tabs. |
-| `<all_urls>` | host_permissions | Required so the slash command menu (`//`) and keyboard palette (`Alt+K`) can detect text input areas and insert prompts across any AI chat interface (including ChatGPT, Claude, Gemini, Perplexity, DeepSeek, Copilot, HuggingChat, Poe, and internal corporate AI tools) rather than restricting the user to a hardcoded domain whitelist. |
+| `contextMenus` | permissions | Used to display the right-click "OmniPrompt" menu options (e.g. "Make Concise", "Fix Grammar", "Explain This Code") when a user highlights text on a webpage, and "Save selection as a new prompt...". |
+| `scripting` | permissions | Used during extension install or update to inject the slash command listener and command palette into already-open tabs, ensuring functionality without forcing the user to manually reload all active tabs, and inject on demand. |
+| `activeTab` | permissions | Used to provide temporary on-demand access to the current tab when the user invokes the browser command (Ctrl+Shift+K) or a right-click context menu item on any page without requiring broad host permissions. |
+| Host permissions (AI sites) | host_permissions | Pre-configured access to curated AI chat and assistant domains (ChatGPT, Claude, Gemini, Perplexity, DeepSeek, Copilot, Grok, etc.) so OmniPrompt works immediately out of the box. |
+| `<all_urls>` | optional_host_permissions | Requested only when the user explicitly enables "Use OmniPrompt on every website" in Settings, allowing the slash command menu (`//`) and keyboard palette (`Alt+K`) to detect text inputs and insert prompts on any site (e.g. Gmail, Slack, Jira, Notion). |
 
 ---
 
@@ -166,24 +184,49 @@ Target search queries in the Chrome Web Store:
    - **Callout**: "Type // to trigger. Works in ChatGPT, Claude, Gemini, and any text box."
 
 2. **Screenshot 2 — Command Palette Search**
-   - **Headline**: "Search 110+ Prompts in Milliseconds"
-   - **Visual**: Dark-mode overlay (`Alt+K`) centered over a browser tab with a search box, starred favourites, and category tags.
-   - **Callout**: "Press Alt+K anytime. Filter by category, star favourites, keyboard navigable."
+   - **Headline**: "Search 136 Prompts in Milliseconds"
+   - **Visual**: Dark-mode overlay (`Alt+K`) centered over a browser tab: search box and results on the left, the preview panel with the full prompt text on the right.
+   - **Callout**: "Press Alt+K anytime. See the exact text before you insert it."
 
 3. **Screenshot 3 — Dynamic Templates with Live Preview**
    - **Headline**: "Fill-in-the-Blank Placeholders"
-   - **Visual**: Variable modal showing fields for `{{code}}` and `{{language|TypeScript}}`, with real-time rendered prompt output below and action buttons ("Insert", "Insert & Send", "Copy").
+   - **Visual**: Variable modal showing fields for `{{code}}` and `{{language|TypeScript}}`, with real-time rendered prompt output below and action buttons ("Insert", "Insert & send", "Copy").
    - **Callout**: "Never hand-edit prompt brackets again. Live preview before sending."
 
 4. **Screenshot 4 — Role-Based Starter Packs & Emoji Icons**
    - **Headline**: "Curated for Developers, Marketers & Founders"
-   - **Visual**: Options dashboard showcasing the Role Picker and custom categories styled with modern emoji badges.
-   - **Callout**: "110 built-in prompts + custom categories. One-click role onboarding."
+   - **Visual**: The welcome page starter-pack picker next to the library page in card view, with the preview panel open.
+   - **Callout**: "136 built-in prompts + custom categories. One-click role onboarding."
 
 5. **Screenshot 5 — 100% Offline Privacy & No Monthly Fee**
    - **Headline**: "Zero Monthly Subscriptions. Zero Cloud Tracking."
    - **Visual**: Side-by-side comparison badge: "Competitors: $10-20/mo subscription + cloud tracking" vs "OmniPrompt: 100% Local Storage + $25 Pro, once".
    - **Callout**: "Your prompts stay in your browser. No account needed."
+
+---
+
+## Submission Answers
+
+### Single-Purpose Description
+```
+OmniPrompt saves reusable text prompts and inserts them at the cursor in any text box, through a // menu, a keyboard palette and the right-click menu.
+```
+
+### Permission Justifications
+- **`storage`**: Saves the user's prompts, categories, favourites, backups and settings in the browser's own storage. If the user switches on sync, a copy is kept in Chrome sync storage for their own signed-in browsers. Nothing is sent to a server.
+- **`unlimitedStorage`**: Prompt libraries, the seven automatic local backups and the per-prompt version history can exceed the 10 MB local storage limit. Without this permission a backup or an edit could fail to save. Everything stays on the device.
+- **`contextMenus`**: Adds an OmniPrompt entry to the right-click menu on selected text and text boxes: 12 text modifiers (for example Make Concise, Fix Grammar), Save selection as a new prompt, and Open prompt library.
+- **`scripting`**: After install or update, injects the extension's own packaged content scripts into tabs that are already open, so the prompt menu works without reloading every tab. Also used to recover a tab when the user presses the keyboard shortcut and the script is missing. No remote code is injected.
+- **`<all_urls>`**: The core feature is typing // or pressing Alt+K in any text box to insert a saved prompt at the cursor. Users do this in AI chat sites and in any other text box they choose (email, issue trackers, documents), so the content script must run on all sites. It only reads the focused text box to insert text and to check the text arrived. It never reads chat transcripts or page content, and sends nothing anywhere. Users can switch it off per site in Settings.
+
+### Remote Code Declaration
+- **Are you using remote code?**: No, I am not using remote code.
+- **Justification**: All JavaScript is packaged in the extension. There is no remote script, eval, or dynamically fetched code. The only network request is a JSON call to Dodo Payments to activate or deactivate a licence key the user enters.
+
+### Data Use Declarations
+- **Data collected**: No data is collected. The only network transmission is the licence key sent to Dodo Payments when the user activates or deactivates Pro; this is disclosed under the privacy policy.
+
+> Note: `dist/` must be rebuilt after switching `DODO_MODE` to `'live'` before final submission.
 
 ---
 
@@ -198,8 +241,11 @@ Target search queries in the Chrome Web Store:
 - [x] Extension-page CSP limits network access to Dodo Payments (`connect-src`).
 - [x] Zero telemetry or unexpected network requests in content scripts or UI.
 - [x] Automated regression suite passing (`node test/verify.js`).
-- [ ] Set `PRO_CHECKOUT_URL` in `lib/promptStore.js` to the real Dodo checkout link.
+- [x] Test-mode product "OmniPrompt Pro - Lifetime" created in Dodo (`pdt_0NoiqA74MQN0ZbtDNA8tq`, $25 one-time, licence key, 5 activations). `PRO_PRODUCT_IDS.test` and `PRO_CHECKOUT_URLS.test` point at it.
+- [ ] Create the same product in Dodo **live** mode. Put its `pdt_` id in `PRO_PRODUCT_IDS.live` and its checkout link in `PRO_CHECKOUT_URLS.live` in `lib/promptStore.js`. Until then no live key activates Pro, and keys sold for your other products must stay refused.
+- [ ] Set `DODO_MODE` to `'live'` in `lib/promptStore.js` before packaging. In `'test'` mode anyone can buy a key with a test card. A live build ignores test licences.
 - [ ] ZIP packaged excluding `test/`, `.git/`, and dev scratch files.
+- [ ] Rebuild dist zip (current one predates Pro features).
 - [ ] Privacy Policy hosted at public URL.
 
 ### Naming note

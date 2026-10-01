@@ -2,6 +2,8 @@
 
 Status: Draft for founder review · Date: September 29, 2026 · Owner: Product
 
+> **Founder decisions, Sept 30, 2026**: Price is $25 final (one-time lifetime). Option B permissions adopted (curated AI list + optional everywhere + activeTab). Free/Pro re-split approved (folders, tags, bulk edit, tidy-up, remembered answers, version history view/copy are Free; 20-prompt custom limit, workspaces, saved value sets, chains, folder sync, one-click restore are Pro). Sections 9 and 10 pricing/packaging ideas are superseded by this decision.
+
 ---
 
 ## 1. The answer on one page
@@ -374,6 +376,17 @@ For install and retention numbers, use the Chrome Web Store developer dashboard.
 6. Search over body and tags.
 7. Store listing assets and a one-time review request.
 8. Publish. Start the Reddit help routine.
+
+---
+
+## 15. Post-launch backlog
+
+### Direct Google Drive API connection
+- **Concept:** Connect directly to Google Drive via `chrome.identity` with a user-supplied OAuth client ID or zero-backend OAuth to read and write `omniprompt-library.json` without requiring the local Google Drive for Desktop client.
+- **Trade-off analysis:**
+  - *Pros:* Works on machines where the user cannot install desktop software (e.g. managed Chromebooks, locked-down work machines).
+  - *Cons:* Requires adding the `identity` permission to `manifest.json` (triggering additional permission warnings during install), Google OAuth consent screen, and token refresh logic.
+  - *Current decision:* For launch, rely strictly on zero-permission local folder sync via Google Drive for Desktop (set to "Stream files" or "Mirror files"). This upholds Principles 1, 5, and 6 (no network traffic, no account, zero telemetry, zero permissions) while providing seamless cloud sync. Re-evaluate direct API connection based on post-launch user demand.
 
 ---
 

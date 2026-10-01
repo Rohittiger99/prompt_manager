@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const FAVOURITES = '__favourites__';
 
+  // Shortcut labels use the Mac key symbols on a Mac (Alt+K reads ⌥K).
+  const hotkeyLabel = (hk) => store.formatHotkey(hk, store.isMacPlatform());
+
   let currentCategory = 'All';
   let searchQuery = '';
   let settings = null;
@@ -58,12 +61,15 @@ document.addEventListener('DOMContentLoaded', () => {
     form: document.getElementById('new-prompt-form'),
     fId: document.getElementById('new-id'),
     fTitle: document.getElementById('new-title'),
+    fTitleError: document.getElementById('new-title-error'),
     fCategory: document.getElementById('new-category'),
     addCategoryBtn: document.getElementById('btn-popup-add-category'),
     fShortcut: document.getElementById('new-shortcut'),
+    fShortcutError: document.getElementById('new-shortcut-error'),
     fTags: document.getElementById('new-tags'),
     fDescription: document.getElementById('new-description'),
     fTemplate: document.getElementById('new-template'),
+    fTemplateError: document.getElementById('new-template-error'),
     formHeading: document.getElementById('new-prompt-heading'),
     saveBtn: document.getElementById('btn-save-popup-prompt'),
     cancelBtn: document.getElementById('btn-cancel-edit-popup'),
@@ -98,12 +104,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     tierBadge: document.getElementById('btn-popup-tier'),
     limitBanner: document.getElementById('popup-limit-banner'),
+    usageMeter: document.getElementById('popup-usage-meter'),
+    usageLabel: document.getElementById('popup-usage-label'),
+    usageFill: document.getElementById('popup-usage-fill'),
+    usageTrack: document.getElementById('popup-usage-track'),
     bannerUpgradeBtn: document.getElementById('btn-popup-banner-upgrade'),
 
     reviewCard: document.getElementById('review-card'),
     reviewYes: document.getElementById('btn-review-yes'),
-    reviewNo: document.getElementById('btn-review-no')
+    reviewNo: document.getElementById('btn-review-no'),
+
+    workspaceBar: document.getElementById('workspace-bar'),
+    workspaceSelect: document.getElementById('workspace-select'),
+    workspaceClearBtn: document.getElementById('workspace-clear-btn'),
+
+    searchBox: document.querySelector('.search-box'),
+    quickStart: document.getElementById('quick-start'),
+    quickStartDismiss: document.getElementById('btn-quick-start-dismiss'),
+    quickStartTrigger: document.getElementById('quick-start-trigger'),
+    quickStartHotkey: document.getElementById('quick-start-hotkey'),
+    moreOpenSettings: document.getElementById('btn-more-open-settings'),
+
+    sitePermBanner: document.getElementById('site-permission-banner'),
+    sitePermDomain: document.getElementById('site-perm-domain'),
+    btnEnableThisSite: document.getElementById('btn-enable-this-site'),
+    btnEnableEverywhere: document.getElementById('btn-enable-everywhere')
   };
+
+  // Small inline icons. One stroke weight, drawn by .ico in base.css.
+  const ICONS = {
+    star: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.4 2.8 1-6-4.3-4.2 6-.9z"></path></svg>',
+    edit: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h8.5"></path><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7.2 18.8 3.5 19.7l.9-3.7Z"></path></svg>',
+    copy: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11.5" height="11.5" rx="2.2"></rect><path d="M15 9V5.7A2.2 2.2 0 0 0 12.8 3.5H5.7a2.2 2.2 0 0 0-2.2 2.2v7.1A2.2 2.2 0 0 0 5.7 15H9"></path></svg>',
+    insert: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 10.5 4.5 15 9 19.5"></path><path d="M19.5 4.5v6a4.5 4.5 0 0 1-4.5 4.5H4.5"></path></svg>',
+    search: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>',
+    star24: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.4 2.8 1-6-4.3-4.2 6-.9z"></path></svg>',
+    folder: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.7l2 2.2h7.3a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"></path></svg>'
+  };
+
+  // The row the keyboard points at. Enter inserts it; -1 means "the first".
+  let activeIndex = -1;
 
   /* =====================================================================
      Boot
@@ -125,14 +165,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     activeHost = await getActiveHost();
     paintSettings();
+    checkSiteCoverage();
     renderPills();
     renderCategoryOptions();
     renderList();
     renderModifiers();
     updateFooter();
     updateTierBadge();
+    renderWorkspaceBar();
 
     bindTabs();
+    bindWorkspaceBar();
     bindSearch();
     bindCategoryNav();
     bindForm();
@@ -141,6 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
     bindModal();
     bindHeader();
     bindReviewCard();
+    bindQuickStart();
+    bindSitePermissionBanner();
 
     // Opening the popup is a natural moment for the daily backup.
     store.maybeDailySnapshot().catch(() => {});
@@ -154,7 +199,121 @@ document.addEventListener('DOMContentLoaded', () => {
       renderList();
       updateFooter();
       updateTierBadge();
+      renderWorkspaceBar();
+      checkSiteCoverage();
     });
+  }
+
+  /* =====================================================================
+     Quick start
+     ===================================================================== */
+
+  /**
+   * First-time users see the three ways in, in their own trigger and hotkey.
+   * The card leaves by itself after the first prompt is used, or on "Got it".
+   */
+  function paintQuickStart() {
+    if (!el.quickStart) return;
+    const used = store.getTotalUses ? store.getTotalUses() : 0;
+    const show = !settings.quickStartDismissed && used === 0 && !searchQuery && currentCategory === 'All';
+    el.quickStart.hidden = !show;
+    if (!show) return;
+    if (el.quickStartTrigger) el.quickStartTrigger.textContent = settings.slashEnabled ? settings.slashTriggerChar : 'Off';
+    if (el.quickStartHotkey) el.quickStartHotkey.textContent = hotkeyLabel(settings.paletteHotkey);
+  }
+
+  function bindQuickStart() {
+    if (!el.quickStartDismiss) return;
+    el.quickStartDismiss.addEventListener('click', async () => {
+      el.quickStart.hidden = true;
+      await store.setSetting('quickStartDismissed', true);
+      settings = store.getSettings();
+      el.search.focus();
+    });
+  }
+
+  /* =====================================================================
+     Client workspace switcher (Pro)
+     ===================================================================== */
+
+  /** Shown to Pro users who have workspaces, and to Free users with existing workspaces. */
+  function renderWorkspaceBar() {
+    if (!el.workspaceBar || !el.workspaceSelect) return;
+    const allWorkspaces = store.getWorkspaces ? store.getWorkspaces() : [];
+    const isPro = store.isPro && store.isPro();
+    const list = isPro ? allWorkspaces : [];
+
+    // If Free user has existing workspaces, keep them visible so they see their data is safe
+    if (!isPro && allWorkspaces.length > 0) {
+      el.workspaceBar.hidden = false;
+      el.workspaceBar.classList.remove('has-active');
+      if (el.workspaceClearBtn) el.workspaceClearBtn.hidden = true;
+      el.workspaceSelect.innerHTML =
+        '<option value="">No workspace (Pro to activate)</option>' +
+        allWorkspaces
+          .map((w) => '<option value="' + escapeAttr(w.id) + '">' + escapeHtml(w.name) + ' (Pro)</option>')
+          .join('');
+      return;
+    }
+
+    el.workspaceBar.hidden = list.length === 0;
+    if (!list.length) return;
+    const active = store.getActiveWorkspace();
+    const activeId = active ? active.id : '';
+
+    if (activeId) {
+      el.workspaceBar.classList.add('has-active');
+      if (el.workspaceClearBtn) el.workspaceClearBtn.hidden = false;
+    } else {
+      el.workspaceBar.classList.remove('has-active');
+      if (el.workspaceClearBtn) el.workspaceClearBtn.hidden = true;
+    }
+
+    el.workspaceSelect.innerHTML =
+      '<option value="">None</option>' +
+      list
+        .map(
+          (w) =>
+            '<option value="' +
+            escapeAttr(w.id) +
+            '"' +
+            (w.id === activeId ? ' selected' : '') +
+            '>' +
+            escapeHtml(w.name) +
+            '</option>'
+        )
+        .join('');
+  }
+
+  function bindWorkspaceBar() {
+    if (!el.workspaceSelect) return;
+    el.workspaceSelect.addEventListener('change', async () => {
+      if (!store.isPro()) {
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?upgrade=workspaces') });
+        window.close();
+        return;
+      }
+      try {
+        await store.setActiveWorkspace(el.workspaceSelect.value);
+        renderWorkspaceBar();
+        const ws = store.getActiveWorkspace();
+        showToast(ws ? 'Workspace: ' + ws.name + '.' : 'No workspace. Fields fill as usual.');
+      } catch (err) {
+        showToast((err && err.message) || 'Could not switch workspace.');
+      }
+    });
+
+    if (el.workspaceClearBtn) {
+      el.workspaceClearBtn.addEventListener('click', async () => {
+        try {
+          await store.setActiveWorkspace('');
+          renderWorkspaceBar();
+          showToast('No workspace. Fields fill as usual.');
+        } catch (err) {
+          showToast((err && err.message) || 'Could not switch off workspace.');
+        }
+      });
+    }
   }
 
   /* =====================================================================
@@ -193,20 +352,41 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!el.tierBadge) return;
     const isPro = store.isPro && store.isPro();
     if (isPro) {
-      el.tierBadge.textContent = '👑 PRO';
-      el.tierBadge.title = 'OmniPrompt Pro (Active)';
+      el.tierBadge.textContent = 'Pro';
+      el.tierBadge.title = 'OmniPrompt Pro is active';
       el.tierBadge.className = 'popup-tier-badge is-pro';
       if (el.limitBanner) el.limitBanner.style.display = 'none';
+      if (el.usageMeter) el.usageMeter.hidden = true;
     } else {
       const count = store.getCustomCount ? store.getCustomCount() : 0;
-      const limit = store.getFreeLimit ? store.getFreeLimit() : 25;
+      const limit = store.getFreeLimit ? store.getFreeLimit() : 20;
       const price = store.getProInfo().price;
-      el.tierBadge.textContent = 'PRO ' + price;
-      el.tierBadge.title = 'Free: ' + count + ' of ' + limit + ' prompts of your own · Pro is ' + price + ' once';
+      // A plan status, not an ad: it says where you are and opens the plan page.
+      el.tierBadge.textContent = 'Free';
+      el.tierBadge.title = 'Free plan: ' + count + ' of ' + limit + ' prompts of your own. Pro is ' + price + ' once.';
       el.tierBadge.className = 'popup-tier-badge';
       if (el.limitBanner) {
         el.limitBanner.style.display = store.isLimitReached && store.isLimitReached() ? 'flex' : 'none';
       }
+      if (el.bannerUpgradeBtn) el.bannerUpgradeBtn.textContent = 'Get Pro · ' + price;
+      const bannerTitle = document.getElementById('popup-limit-title');
+      if (bannerTitle) bannerTitle.textContent = Math.min(count, limit) + ' of ' + limit + ' prompts saved';
+      paintUsageMeter(count, limit);
+    }
+  }
+
+  /** The Free allowance as a bar on the + New tab, so the limit is never a surprise. */
+  function paintUsageMeter(count, limit) {
+    if (!el.usageMeter) return;
+    const used = Math.min(count, limit);
+    const pct = limit > 0 ? Math.round((used / limit) * 100) : 100;
+    el.usageMeter.hidden = false;
+    el.usageMeter.classList.toggle('is-near', pct >= 80);
+    if (el.usageLabel) el.usageLabel.textContent = used + ' of ' + limit + ' of your own prompts';
+    if (el.usageFill) el.usageFill.style.width = pct + '%';
+    if (el.usageTrack) {
+      el.usageTrack.setAttribute('aria-valuemax', String(limit));
+      el.usageTrack.setAttribute('aria-valuenow', String(used));
     }
   }
 
@@ -255,15 +435,23 @@ document.addEventListener('DOMContentLoaded', () => {
      ===================================================================== */
 
   function bindHeader() {
+    // The plan chip opens the plan page, which compares Free and Pro and
+    // holds the licence box. The limit banner opens the paywall for its reason.
     if (el.tierBadge) {
       el.tierBadge.addEventListener('click', () => {
-        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?view=settings#license') });
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?view=plan') });
+        window.close();
+      });
+    }
+    if (el.moreOpenSettings) {
+      el.moreOpenSettings.addEventListener('click', () => {
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?view=settings') });
         window.close();
       });
     }
     if (el.bannerUpgradeBtn) {
       el.bannerUpgradeBtn.addEventListener('click', () => {
-        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?view=settings#license') });
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?upgrade=limit') });
         window.close();
       });
     }
@@ -277,6 +465,48 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  let formInitialSnapshot = null;
+
+  function getFormSnapshot() {
+    return JSON.stringify({
+      id: (el.fId && el.fId.value) || '',
+      title: (el.fTitle && el.fTitle.value) || '',
+      category: (el.fCategory && el.fCategory.value) || '',
+      shortcut: (el.fShortcut && el.fShortcut.value) || '',
+      tags: (el.fTags && el.fTags.value) || '',
+      description: (el.fDescription && el.fDescription.value) || '',
+      template: (el.fTemplate && el.fTemplate.value) || ''
+    });
+  }
+
+  function isFormDirty() {
+    const pane = document.getElementById('tab-new');
+    if (!pane || !pane.classList.contains('active')) return false;
+    if (!formInitialSnapshot) return false;
+    return getFormSnapshot() !== formInitialSnapshot;
+  }
+
+  function clearFormErrors() {
+    if (el.fTitleError) el.fTitleError.textContent = '';
+    if (el.fTemplateError) el.fTemplateError.textContent = '';
+    if (el.fShortcutError) el.fShortcutError.textContent = '';
+    if (el.fTitle) {
+      el.fTitle.removeAttribute('aria-invalid');
+      const g = el.fTitle.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    }
+    if (el.fTemplate) {
+      el.fTemplate.removeAttribute('aria-invalid');
+      const g = el.fTemplate.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    }
+    if (el.fShortcut) {
+      el.fShortcut.removeAttribute('aria-invalid');
+      const g = el.fShortcut.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    }
+  }
+
   function bindTabs() {
     el.tabs.forEach((btn) => {
       btn.addEventListener('click', () => selectTab(btn.getAttribute('data-tab')));
@@ -284,6 +514,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function selectTab(tabId) {
+    if (tabId !== 'tab-new' && isFormDirty()) {
+      if (!window.confirm('Discard unsaved changes to this prompt?')) return;
+      formInitialSnapshot = null;
+      resetForm();
+    }
     el.tabs.forEach((b) => {
       const on = b.getAttribute('data-tab') === tabId;
       b.classList.toggle('active', on);
@@ -302,36 +537,89 @@ document.addEventListener('DOMContentLoaded', () => {
       if (el.limitBanner) {
         el.limitBanner.style.display = store.isLimitReached && store.isLimitReached() ? 'flex' : 'none';
       }
+      formInitialSnapshot = getFormSnapshot();
+      clearFormErrors();
       el.fTitle.focus();
     }
+  }
+
+  function paintSearchState() {
+    el.clearSearch.hidden = !searchQuery;
+    if (el.searchBox) el.searchBox.classList.toggle('has-query', !!searchQuery);
   }
 
   function bindSearch() {
     el.search.addEventListener('input', () => {
       searchQuery = el.search.value.trim();
-      el.clearSearch.style.display = searchQuery ? 'block' : 'none';
+      paintSearchState();
+      if (!el.panes[0].classList.contains('active')) selectTab('tab-prompts');
       renderList();
     });
 
+    // The popup is a launcher: type, arrow to the row, Enter to insert it.
+    // Shift+Enter copies instead. The row the keyboard is on shows its text.
     el.search.addEventListener('keydown', (e) => {
-      // Enter on a search inserts the top hit, which makes the popup usable
-      // without touching the mouse.
+      if (isImeKey(e)) return;
+      const rows = navRows();
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!rows.length) return;
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        const from = activeIndex < 0 ? (step > 0 ? -1 : 0) : activeIndex;
+        setActive(Math.max(0, Math.min(rows.length - 1, from + step)), true);
+        return;
+      }
       if (e.key === 'Enter') {
-        const first = el.list.querySelector('.prompt-card');
-        if (first) {
-          e.preventDefault();
-          insertPrompt(first.getAttribute('data-id'));
-        }
+        const row = rows[activeIndex >= 0 ? activeIndex : 0];
+        if (!row) return;
+        e.preventDefault();
+        activateRow(row, e.shiftKey);
+        return;
+      }
+      if (e.key === 'Escape' && searchQuery) {
+        // First Escape clears the search; the next one closes the popup.
+        e.preventDefault();
+        clearSearch();
       }
     });
 
-    el.clearSearch.addEventListener('click', () => {
-      el.search.value = '';
-      searchQuery = '';
-      el.clearSearch.style.display = 'none';
-      el.search.focus();
-      renderList();
+    el.clearSearch.addEventListener('click', clearSearch);
+  }
+
+  function clearSearch() {
+    el.search.value = '';
+    searchQuery = '';
+    paintSearchState();
+    el.search.focus();
+    renderList();
+  }
+
+  function navRows() {
+    return Array.from(el.list.querySelectorAll('.prompt-card'));
+  }
+
+  /** Point the keyboard at a row: highlight it, reveal its text, keep it in view. */
+  function setActive(index, scroll) {
+    const rows = navRows();
+    activeIndex = index;
+    rows.forEach((row, i) => {
+      const on = i === index;
+      row.classList.toggle('is-active', on);
+      row.setAttribute('aria-selected', String(on));
+      if (on && scroll) row.scrollIntoView({ block: 'nearest' });
     });
+    const current = rows[index];
+    if (current && current.id) el.search.setAttribute('aria-activedescendant', current.id);
+    else el.search.removeAttribute('aria-activedescendant');
+  }
+
+  function activateRow(row, copyInstead) {
+    const chainId = row.getAttribute('data-chain');
+    if (chainId) return runChain(chainId);
+    const id = row.getAttribute('data-id');
+    if (!id) return;
+    if (copyInstead) return copyPrompt(id);
+    return insertPrompt(id);
   }
 
   /* =====================================================================
@@ -451,8 +739,8 @@ document.addEventListener('DOMContentLoaded', () => {
       (currentCategory === FAVOURITES ? ' active' : '') +
       '" data-cat="' +
       FAVOURITES +
-      '" title="Your favourites">★ ' +
-      favCount +
+      '" title="Your favourites" aria-label="Favourites">★' +
+      (favCount ? ' <span class="pill-count">' + favCount + '</span>' : '') +
       '</button>';
 
     html +=
@@ -513,19 +801,93 @@ document.addEventListener('DOMContentLoaded', () => {
     return store.search({ query: searchQuery, category: currentCategory });
   }
 
+  /** Pro chains that match the search, shown above the prompts in "All". */
+  function chainCardsHtml() {
+    if (currentCategory !== 'All' || !store.searchChains) return '';
+    const chains = store.searchChains({ query: searchQuery, limit: 5 });
+    if (!chains.length) return '';
+    const prefix = settings.slashEnabled ? settings.slashTriggerChar : '';
+    return (
+      '<div class="list-section-label">Chains</div>' +
+      chains
+        .map(
+          (c) =>
+            '<div class="prompt-card chain-card" role="option" aria-selected="false" data-chain="' +
+            escapeAttr(c.id) +
+            '">' +
+            '<span class="row-icon" aria-hidden="true">⛓</span>' +
+            '<div class="row-main">' +
+            '<div class="row-top"><span class="prompt-card-title">' +
+            escapeHtml(c.title) +
+            '</span></div>' +
+            '<div class="prompt-card-desc">' +
+            escapeHtml(c.description || 'Inserts step 1, then waits for you to ask for the next.') +
+            '</div>' +
+            '<div class="prompt-card-tags"><span class="tag-badge">' +
+            c.steps.length +
+            ' steps</span></div>' +
+            '</div>' +
+            '<div class="row-side">' +
+            (c.shortcut && prefix ? '<span class="prompt-card-shortcut">' + escapeHtml(prefix + c.shortcut) + '</span>' : '') +
+            '</div>' +
+            '<div class="prompt-card-actions"><button type="button" class="btn-action btn-action-primary" data-act="run-chain" title="Start this chain in the page">' +
+            ICONS.insert +
+            'Run</button></div>' +
+            '</div>'
+        )
+        .join('')
+    );
+  }
+
+  function bindChainCards() {
+    el.list.querySelectorAll('.chain-card').forEach((card) => {
+      const id = card.getAttribute('data-chain');
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        runChain(id);
+      });
+    });
+  }
+
+  /** Start a chain in the page. The page asks for fields and inserts step 1. */
+  async function runChain(id) {
+    if (!store.isPro()) {
+      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?upgrade=chains') });
+      window.close();
+      return;
+    }
+    const result = await relayToTab({ action: 'start_chain', chainId: id });
+    if (result.ok) {
+      window.close();
+      return;
+    }
+    showToast('Cannot reach this page. Chains run in a page with a text box.');
+  }
+
   function renderList() {
     const results = currentResults();
+    const chainsHtml = chainCardsHtml();
+    paintQuickStart();
+
+    if (!results.length && chainsHtml) {
+      el.list.innerHTML = chainsHtml;
+      finishList(0);
+      return;
+    }
 
     if (!results.length) {
-      el.list.innerHTML =
-        '<div class="empty-state">' +
-        (searchQuery
-          ? 'Nothing matches <strong>' + escapeHtml(searchQuery) + '</strong>.'
-          : currentCategory === FAVOURITES
-          ? 'No favourites yet. Tap the star on any prompt to pin it here.'
-          : 'No prompts in this category yet.') +
-        '</div>';
-      updateFooter(results.length);
+      el.list.innerHTML = emptyStateHtml();
+      const create = el.list.querySelector('[data-act="create-from-search"]');
+      if (create) {
+        create.addEventListener('click', () => {
+          resetForm();
+          el.fTitle.value = searchQuery.charAt(0).toUpperCase() + searchQuery.slice(1);
+          selectTab('tab-new');
+          el.fTemplate.focus();
+        });
+      }
+      activeIndex = -1;
+      updateFooter(0);
       return;
     }
 
@@ -535,6 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!searchQuery && currentCategory === 'All') {
       const recents = store.getRecent(3);
       if (recents.length) {
+        html += chainsHtml;
         html += '<div class="list-section-label">Recent</div>';
         html += recents.map(cardHtml).join('');
         html += '<div class="list-section-label">All prompts</div>';
@@ -544,15 +907,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         html += results.filter((p) => !recentIds[p.id]).map(cardHtml).join('');
         el.list.innerHTML = html;
-        bindCards();
-        updateFooter(results.length);
+        finishList(results.length);
         return;
       }
     }
 
-    el.list.innerHTML = results.map(cardHtml).join('');
+    el.list.innerHTML =
+      chainsHtml + (chainsHtml ? '<div class="list-section-label">Prompts</div>' : '') + results.map(cardHtml).join('');
+    finishList(results.length);
+  }
+
+  /** Number the rows for the keyboard, bind them, and point at the top hit while searching. */
+  function finishList(count) {
+    navRows().forEach((row, i) => {
+      row.id = 'prow-' + i;
+    });
     bindCards();
-    updateFooter(results.length);
+    bindChainCards();
+    setActive(searchQuery ? 0 : -1, false);
+    updateFooter(count);
+  }
+
+  function emptyStateHtml() {
+    if (searchQuery) {
+      return (
+        '<div class="empty-state">' +
+        '<span class="empty-icon">' + ICONS.search + '</span>' +
+        '<div>Nothing matches <strong>' + escapeHtml(searchQuery) + '</strong>' +
+        (currentCategory !== 'All' ? ' in this filter.' : '.') + '</div>' +
+        '<div class="field-note">Search looks at names, shortcuts, tags and the prompt text.</div>' +
+        '<button type="button" class="btn-secondary btn-mini" data-act="create-from-search">Create “' +
+        escapeHtml(searchQuery.length > 28 ? searchQuery.slice(0, 28) + '…' : searchQuery) +
+        '”</button>' +
+        '</div>'
+      );
+    }
+    if (currentCategory === FAVOURITES) {
+      return (
+        '<div class="empty-state">' +
+        '<span class="empty-icon">' + ICONS.star24 + '</span>' +
+        '<div><strong>No favourites yet</strong></div>' +
+        '<div class="field-note">Hover a prompt and press the star. Favourites come first in the menu and in ' +
+        escapeHtml(hotkeyLabel(settings.paletteHotkey)) +
+        '.</div>' +
+        '</div>'
+      );
+    }
+    return (
+      '<div class="empty-state">' +
+      '<span class="empty-icon">' + ICONS.folder + '</span>' +
+      '<div><strong>Nothing here yet</strong></div>' +
+      '<div class="field-note">' +
+      (currentCategory === 'Custom'
+        ? 'Prompts you write yourself live here. Use + New to add your first.'
+        : 'This category is empty, or its starter pack is switched off in Settings.') +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  /** The first lines of a template, with {{fields}} marked, safe to put in the DOM. */
+  function previewHtml(text) {
+    const clipped = String(text || '').slice(0, 320);
+    return escapeHtml(clipped).replace(/\{\{[^{}]{1,80}\}\}/g, (m) => '<mark>' + m + '</mark>') +
+      (String(text || '').length > 320 ? '…' : '');
   }
 
   function cardHtml(p) {
@@ -560,63 +978,99 @@ document.addEventListener('DOMContentLoaded', () => {
     const varCount = template.variableCount(p);
     const fav = store.isFavorite(p.id);
     const usage = store.getUsage(p.id);
+    const catMeta = store.getCategoryMeta(p.category || 'Custom');
 
+    // Only the facts that change what happens when you pick it.
     const meta = [];
-    meta.push('<span class="tag-badge">' + escapeHtml(p.category || 'Custom') + '</span>');
     if (varCount) {
       meta.push(
-        '<span class="tag-badge" title="' +
+        '<span class="tag-badge" title="A short form asks for ' +
+          varCount +
+          ' value' +
+          (varCount === 1 ? '' : 's') +
+          ' first">' +
           varCount +
           ' field' +
           (varCount === 1 ? '' : 's') +
-          ' to fill in">' +
-          varCount +
-          ' ⌨</span>'
+          '</span>'
       );
     }
     if (usage.count > 2) {
       meta.push('<span class="tag-badge" title="You use this often">used ' + usage.count + '×</span>');
     }
+    if (p.isCustom) meta.push('<span class="tag-badge" title="You wrote this prompt">yours</span>');
     if (p.isEdited) meta.push('<span class="tag-badge" title="You edited this built-in prompt">edited</span>');
+    // Say up front that {{@blocks}} stay as written on Free.
+    if (template.listBlocks(p.template).length) {
+      meta.push(
+        store.isPro()
+          ? '<span class="tag-badge" title="Uses context blocks">context</span>'
+          : '<span class="tag-badge" title="Uses context blocks. On Free they are inserted as written; Pro fills them in.">Pro · context</span>'
+      );
+    }
 
     return (
-      '<div class="prompt-card" data-id="' +
+      '<div class="prompt-card" role="option" aria-selected="false" data-id="' +
       escapeAttr(p.id) +
+      '" title="' +
+      escapeAttr(p.title + ' (' + (p.category || 'Custom') + ')') +
       '">' +
-      '<div class="prompt-card-top">' +
+      '<span class="row-icon" aria-hidden="true">' +
+      escapeHtml(catMeta.icon || '🏷️') +
+      '</span>' +
+      '<div class="row-main">' +
+      '<div class="row-top">' +
       '<span class="prompt-card-title">' +
       escapeHtml(p.title) +
       '</span>' +
-      (p.shortcut && prefix
-        ? '<span class="prompt-card-shortcut">' + escapeHtml(prefix + p.shortcut) + '</span>'
-        : '') +
+      (fav ? '<span class="row-fav" title="Favourite">★</span>' : '') +
+      '<span class="prompt-card-tags">' +
+      meta.join('') +
+      '</span>' +
       '</div>' +
       '<div class="prompt-card-desc">' +
       escapeHtml(p.description || '') +
       '</div>' +
-      '<div class="prompt-card-bottom">' +
-      '<div class="prompt-card-tags">' +
-      meta.join('') +
+      '<div class="row-preview">' +
+      previewHtml(p.template) +
+      '</div>' +
+      '</div>' +
+      '<div class="row-side">' +
+      (p.shortcut && prefix
+        ? '<span class="prompt-card-shortcut">' + escapeHtml(prefix + p.shortcut) + '</span>'
+        : '') +
       '</div>' +
       '<div class="prompt-card-actions">' +
-      '<button class="btn-action btn-star' +
+      '<button type="button" class="btn-action btn-star' +
       (fav ? ' is-fav' : '') +
       '" data-act="fav" title="' +
       (fav ? 'Remove from favourites' : 'Add to favourites') +
-      '" aria-label="Toggle favourite">' +
-      (fav ? '★' : '☆') +
+      '" aria-label="' +
+      (fav ? 'Remove from favourites' : 'Add to favourites') +
+      '" aria-pressed="' +
+      fav +
+      '">' +
+      ICONS.star +
       '</button>' +
-      '<button class="btn-action" data-act="edit" title="Edit this prompt">Edit</button>' +
-      '<button class="btn-action" data-act="copy" title="Copy to clipboard">Copy</button>' +
-      '<button class="btn-action btn-action-primary" data-act="insert" title="Insert into the page">Insert</button>' +
-      '</div>' +
+      '<button type="button" class="btn-action" data-act="edit" title="Edit" aria-label="Edit this prompt">' +
+      ICONS.edit +
+      '</button>' +
+      '<button type="button" class="btn-action" data-act="copy" title="Copy (Shift+Enter)" aria-label="Copy to clipboard">' +
+      ICONS.copy +
+      '</button>' +
+      '<button type="button" class="btn-action" data-act="compare" title="Compare across AIs" aria-label="Compare across AIs">' +
+      '<span style="font-size:12px;line-height:1;">⚖️</span>' +
+      '</button>' +
+      '<button type="button" class="btn-action btn-action-primary" data-act="insert" title="Insert where your cursor is (Enter)">' +
+      ICONS.insert +
+      'Insert</button>' +
       '</div>' +
       '</div>'
     );
   }
 
   function bindCards() {
-    el.list.querySelectorAll('.prompt-card').forEach((card) => {
+    el.list.querySelectorAll('.prompt-card[data-id]').forEach((card) => {
       const id = card.getAttribute('data-id');
 
       card.querySelectorAll('[data-act]').forEach((btn) => {
@@ -626,12 +1080,27 @@ document.addEventListener('DOMContentLoaded', () => {
           if (act === 'fav') return toggleFavourite(id);
           if (act === 'edit') return editPrompt(id);
           if (act === 'copy') return copyPrompt(id);
+          if (act === 'compare') return comparePrompt(id);
           if (act === 'insert') return insertPrompt(id);
         });
       });
 
       card.addEventListener('click', () => insertPrompt(id));
     });
+  }
+
+  async function comparePrompt(id) {
+    if (!store.isPro()) {
+      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html?upgrade=compare') });
+      window.close();
+      return;
+    }
+    const result = await relayToTab({ action: 'open_compare', promptId: id });
+    if (result.ok) {
+      window.close();
+      return;
+    }
+    showToast('Cannot reach this page. Compare runs on pages where OmniPrompt is active.');
   }
 
   async function toggleFavourite(id) {
@@ -728,6 +1197,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target === el.modal) closeModal();
     });
     document.addEventListener('keydown', (e) => {
+      if (isImeKey(e)) return;
       if (e.key === 'Escape') {
         if (el.catModal && el.catModal.style.display === 'flex') {
           e.preventDefault();
@@ -752,10 +1222,17 @@ document.addEventListener('DOMContentLoaded', () => {
     el.modalTitle.textContent = prompt.title;
     el.modalInsert.textContent = mode === 'insert' ? 'Insert into page' : 'Insert into page';
 
+    // Pro: the active workspace and remembered answers fill in here too.
+    const sources = store.getValueSources(prompt.id);
     const initial = template.buildInitialValues(
       prompt,
       { selection: '', url: '', title: '' },
-      { allowClipboard: false, cached: modalCache[prompt.id] || {} }
+      {
+        allowClipboard: false,
+        cached: modalCache[prompt.id] || {},
+        workspace: sources.workspace ? sources.workspace.values : null,
+        remembered: sources.remembered
+      }
     );
     modalVariables = initial.variables;
 
@@ -767,6 +1244,7 @@ document.addEventListener('DOMContentLoaded', () => {
       field.addEventListener('input', updateModalPreview);
       field.addEventListener('change', updateModalPreview);
       field.addEventListener('keydown', (e) => {
+        if (isImeKey(e)) return;
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault();
           finishModal(mode);
@@ -929,6 +1407,8 @@ document.addEventListener('DOMContentLoaded', () => {
     modalCache[modalPrompt.id] = values;
     const text = template.render(modalPrompt.template, values);
     const id = modalPrompt.id;
+    // Pro keeps short answers for next time; nothing happens on Free.
+    store.rememberValues(id, values, modalVariables);
 
     if (mode === 'insert') {
       // The page records the use itself once the text has landed.
@@ -968,7 +1448,7 @@ document.addEventListener('DOMContentLoaded', () => {
           '<div class="modifier-card" data-mod-id="' +
           escapeAttr(m.id) +
           '" role="button" tabindex="0">' +
-          '<div class="modifier-card-header"><span>' +
+          '<div class="modifier-card-header"><span class="mod-icon" aria-hidden="true">' +
           m.icon +
           '</span><span>' +
           escapeHtml(m.shortTitle || m.title) +
@@ -1038,8 +1518,9 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedCategoryEmoji = '🏷️';
     activeEmojiTab = 0;
     el.catModalName.value = '';
+    el.catModalName.removeAttribute('aria-invalid');
     el.catModalError.textContent = '';
-    el.catModalTitle.textContent = 'New Category';
+    el.catModalTitle.textContent = 'New category';
     el.catModalPreview.textContent = selectedCategoryEmoji;
     el.catModalCustomEmoji.value = '';
     renderPopupEmojiPicker();
@@ -1116,6 +1597,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target === el.catModal) closePopupCategoryModal();
     });
 
+    el.catModalName.addEventListener('input', () => {
+      if (el.catModalName.value.trim()) {
+        el.catModalError.textContent = '';
+        el.catModalName.removeAttribute('aria-invalid');
+      }
+    });
+
     el.catModalCustomEmoji.addEventListener('input', () => {
       const val = el.catModalCustomEmoji.value.trim();
       if (val) {
@@ -1129,6 +1617,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const name = el.catModalName.value.trim();
       if (!name) {
         el.catModalError.textContent = 'Please enter a category name.';
+        el.catModalName.setAttribute('aria-invalid', 'true');
         el.catModalName.focus();
         return;
       }
@@ -1136,9 +1625,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const cat = await store.createCategory(name, selectedCategoryEmoji);
       if (!cat) {
         el.catModalError.textContent = 'A category with that name already exists.';
+        el.catModalName.setAttribute('aria-invalid', 'true');
+        el.catModalName.focus();
         return;
       }
 
+      el.catModalName.removeAttribute('aria-invalid');
       closePopupCategoryModal();
       renderPills();
       renderCategoryOptions(cat.name);
@@ -1147,8 +1639,33 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function bindForm() {
-    el.fShortcut.addEventListener('input', updateShortcutPreview);
-    el.fTemplate.addEventListener('input', updateVariableSummary);
+    el.fTitle.addEventListener('input', () => {
+      if (el.fTitle.value.trim()) {
+        if (el.fTitleError) el.fTitleError.textContent = '';
+        el.fTitle.removeAttribute('aria-invalid');
+        const g = el.fTitle.closest('.form-group');
+        if (g) g.classList.remove('has-error');
+      }
+    });
+
+    el.fTemplate.addEventListener('input', () => {
+      updateVariableSummary();
+      if (el.fTemplate.value.trim()) {
+        if (el.fTemplateError) el.fTemplateError.textContent = '';
+        el.fTemplate.removeAttribute('aria-invalid');
+        const g = el.fTemplate.closest('.form-group');
+        if (g) g.classList.remove('has-error');
+      }
+    });
+
+    el.fShortcut.addEventListener('input', () => {
+      updateShortcutPreview();
+      if (el.fShortcutError) el.fShortcutError.textContent = '';
+      el.fShortcut.removeAttribute('aria-invalid');
+      const g = el.fShortcut.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    });
+
     updateShortcutPreview();
     updateVariableSummary();
 
@@ -1160,6 +1677,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     el.cancelBtn.addEventListener('click', () => {
+      if (isFormDirty()) {
+        if (!window.confirm('Discard unsaved changes to this prompt?')) return;
+      }
+      formInitialSnapshot = null;
+      clearFormErrors();
       resetForm();
       selectTab('tab-prompts');
     });
@@ -1181,6 +1703,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     el.form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      clearFormErrors();
 
       const draft = {
         title: el.fTitle.value.trim(),
@@ -1194,15 +1717,46 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = el.fId.value.trim();
       if (id) draft.id = id;
 
+      let hasError = false;
+      let firstErrorEl = null;
+
+      if (!draft.title) {
+        if (el.fTitleError) el.fTitleError.textContent = 'Please enter a title.';
+        el.fTitle.setAttribute('aria-invalid', 'true');
+        const g = el.fTitle.closest('.form-group');
+        if (g) g.classList.add('has-error');
+        hasError = true;
+        if (!firstErrorEl) firstErrorEl = el.fTitle;
+      }
+
+      if (!draft.template.trim()) {
+        if (el.fTemplateError) el.fTemplateError.textContent = 'Please enter some prompt text.';
+        el.fTemplate.setAttribute('aria-invalid', 'true');
+        const g = el.fTemplate.closest('.form-group');
+        if (g) g.classList.add('has-error');
+        hasError = true;
+        if (!firstErrorEl) firstErrorEl = el.fTemplate;
+      }
+
       const clash = findShortcutClash(draft.shortcut, id);
       if (clash) {
-        showToast('Shortcut ' + settings.slashTriggerChar + draft.shortcut + ' is already used by "' + clash.title + '".');
-        el.fShortcut.focus();
+        if (el.fShortcutError) el.fShortcutError.textContent = 'Shortcut ' + settings.slashTriggerChar + draft.shortcut + ' is already used by "' + clash.title + '".';
+        el.fShortcut.setAttribute('aria-invalid', 'true');
+        const g = el.fShortcut.closest('.form-group');
+        if (g) g.classList.add('has-error');
+        hasError = true;
+        if (!firstErrorEl) firstErrorEl = el.fShortcut;
+      }
+
+      if (hasError) {
+        if (firstErrorEl) firstErrorEl.focus();
         return;
       }
 
       try {
         const saved = await store.savePrompt(draft);
+        formInitialSnapshot = null;
+        clearFormErrors();
         resetForm();
         renderPills();
         renderList();
@@ -1210,8 +1764,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(id ? 'Prompt updated.' : 'Prompt saved.' + (saved && saved.shortcut ? ' Try ' + settings.slashTriggerChar + saved.shortcut : ''));
       } catch (err) {
         if (err && err.code === 'LIMIT_REACHED') {
-          showToast('Free limit reached (25 prompts). Upgrade to Pro for unlimited prompts.');
-          if (el.limitBanner) el.limitBanner.hidden = false;
+          const limit = store.getFreeLimit ? store.getFreeLimit() : 20;
+          showToast('You have ' + limit + ' prompts, the Free maximum. They all still work. Pro removes the cap.');
+          if (el.limitBanner) el.limitBanner.style.display = 'flex';
           return;
         }
         showToast('Error saving prompt: ' + (err ? err.message : 'Unknown error'));
@@ -1236,16 +1791,22 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateVariableSummary() {
     const vars = template.parseVariables(el.fTemplate.value);
     if (!vars.length) {
-      el.variableSummary.textContent = 'No placeholders yet. This prompt will insert as-is.';
+      el.variableSummary.textContent = 'No blanks yet, so it inserts exactly as written.';
       return;
     }
     el.variableSummary.textContent =
-      'You will be asked for: ' + vars.map((v) => v.label).join(', ') + '.';
+      'Each time, a short form asks for: ' + vars.map((v) => v.label).join(', ') + '.';
+  }
+
+  function paintMoreFields(open) {
+    const more = el.form.querySelector('.more-fields');
+    if (more) more.open = !!open;
   }
 
   function editPrompt(id) {
     const p = store.getById(id);
     if (!p) return;
+    clearFormErrors();
 
     el.fId.value = p.id;
     el.fTitle.value = p.title || '';
@@ -1258,19 +1819,24 @@ document.addEventListener('DOMContentLoaded', () => {
     el.formHeading.textContent = store.isBuiltin(p.id) ? 'Edit built-in prompt' : 'Edit prompt';
     el.saveBtn.textContent = 'Save changes';
     el.cancelBtn.style.display = '';
+    paintMoreFields((p.tags && p.tags.length) || p.description);
 
     updateShortcutPreview();
     updateVariableSummary();
     selectTab('tab-new');
+    formInitialSnapshot = getFormSnapshot();
   }
 
   function resetForm() {
+    clearFormErrors();
+    formInitialSnapshot = null;
     el.form.reset();
     el.fId.value = '';
     renderCategoryOptions();
     el.formHeading.textContent = 'Create a prompt';
     el.saveBtn.textContent = 'Save prompt';
     el.cancelBtn.style.display = 'none';
+    paintMoreFields(false);
     updateShortcutPreview();
     updateVariableSummary();
   }
@@ -1283,6 +1849,114 @@ document.addEventListener('DOMContentLoaded', () => {
     field.focus();
     const caret = start + text.length;
     field.setSelectionRange(caret, caret);
+  }
+
+  /* =====================================================================
+     Site permissions
+     ===================================================================== */
+
+  function matchesHost(pattern, host) {
+    if (!pattern || !host) return false;
+    if (pattern === '<all_urls>') return true;
+    try {
+      const match = /^(\*|https?):\/\/(\*|\*\.[^/]+|[^/]+)\/.*$/.exec(pattern);
+      if (!match) return false;
+      const hostPattern = match[2];
+      if (hostPattern === '*') return true;
+      if (hostPattern.startsWith('*.')) {
+        const root = hostPattern.slice(2);
+        return host === root || host.endsWith('.' + root);
+      }
+      return host === hostPattern;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function checkSiteCoverage() {
+    if (!el.sitePermBanner) return;
+    if (!activeHost) {
+      el.sitePermBanner.hidden = true;
+      return;
+    }
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(activeHost)) {
+      el.sitePermBanner.hidden = true;
+      return;
+    }
+    if (typeof chrome === 'undefined' || !chrome.permissions) {
+      el.sitePermBanner.hidden = true;
+      return;
+    }
+
+    const hasEverywhere = await new Promise((resolve) => {
+      chrome.permissions.contains({ origins: ['<all_urls>'] }, (res) => {
+        void chrome.runtime.lastError;
+        resolve(res);
+      });
+    });
+    if (hasEverywhere) {
+      el.sitePermBanner.hidden = true;
+      return;
+    }
+
+    const manifest = (chrome.runtime && chrome.runtime.getManifest) ? chrome.runtime.getManifest() : {};
+    const staticHosts = manifest.host_permissions || [];
+    for (let i = 0; i < staticHosts.length; i++) {
+      if (matchesHost(staticHosts[i], activeHost)) {
+        el.sitePermBanner.hidden = true;
+        return;
+      }
+    }
+
+    const hasSitePerm = await new Promise((resolve) => {
+      chrome.permissions.contains({ origins: ['https://' + activeHost + '/*'] }, (res) => {
+        void chrome.runtime.lastError;
+        resolve(res);
+      });
+    });
+    if (hasSitePerm) {
+      el.sitePermBanner.hidden = true;
+      return;
+    }
+
+    el.sitePermBanner.hidden = false;
+    if (el.sitePermDomain) {
+      el.sitePermDomain.textContent = 'Turn it on to use shortcuts and prompts on ' + activeHost + '.';
+    }
+  }
+
+  function bindSitePermissionBanner() {
+    if (el.btnEnableThisSite) {
+      el.btnEnableThisSite.addEventListener('click', () => {
+        if (!activeHost) return;
+        const origin = 'https://' + activeHost + '/*';
+        chrome.permissions.request({ origins: [origin] }, (granted) => {
+          void chrome.runtime.lastError;
+          if (granted) {
+            el.sitePermBanner.hidden = true;
+            showToast('OmniPrompt enabled on ' + activeHost + '.');
+            chrome.runtime.sendMessage({ action: 'inject_into_tab' }, () => void chrome.runtime.lastError);
+          } else {
+            showToast('Permission not granted.');
+          }
+        });
+      });
+    }
+
+    if (el.btnEnableEverywhere) {
+      el.btnEnableEverywhere.addEventListener('click', () => {
+        chrome.permissions.request({ origins: ['<all_urls>'] }, (granted) => {
+          void chrome.runtime.lastError;
+          if (granted) {
+            el.sitePermBanner.hidden = true;
+            showToast('OmniPrompt enabled on every website.');
+            chrome.runtime.sendMessage({ action: 'inject_into_tab' }, () => void chrome.runtime.lastError);
+          } else {
+            showToast('Permission not granted.');
+          }
+        });
+      });
+    }
   }
 
   /* =====================================================================
@@ -1346,7 +2020,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const parts = [];
       parts.push('Added ' + result.added);
       if (result.skipped) parts.push(result.skipped + ' already there');
+      if (result.overLimit) {
+        parts.push(result.overLimit + ' not added (Free holds ' + result.limit + ' of your own; Pro removes the cap)');
+      }
       showToast(parts.join(', ') + '.');
+      updateTierBadge();
     };
     reader.onerror = () => {
       e.target.value = '';
@@ -1436,10 +2114,10 @@ document.addEventListener('DOMContentLoaded', () => {
       el.count.textContent = total + ' prompts' + (mine ? ' · ' + mine + ' yours' : '');
     }
 
-    const hk = settings.paletteHotkey.display;
+    const hk = hotkeyLabel(settings.paletteHotkey);
     el.hotkeyHint.innerHTML = settings.slashEnabled
-      ? 'Type <kbd>' + escapeHtml(settings.slashTriggerChar) + '</kbd> or press <kbd>' + escapeHtml(hk) + '</kbd>'
-      : 'Press <kbd>' + escapeHtml(hk) + '</kbd> in any chat';
+      ? 'In any text box: <kbd>' + escapeHtml(settings.slashTriggerChar) + '</kbd> or <kbd>' + escapeHtml(hk) + '</kbd>'
+      : 'In any page: <kbd>' + escapeHtml(hk) + '</kbd>';
 
     if (el.exportDesc) {
       el.exportDesc.textContent =
@@ -1456,6 +2134,15 @@ document.addEventListener('DOMContentLoaded', () => {
     el.toast.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2600);
+  }
+
+  /**
+   * True while an IME (Chinese, Japanese, Korean) is composing. Its Enter and
+   * Esc belong to the IME and must not insert a prompt or close anything.
+   * Safari reports the confirming Enter as keyCode 229 with isComposing false.
+   */
+  function isImeKey(e) {
+    return !!e.isComposing || e.keyCode === 229;
   }
 
   function escapeHtml(str) {

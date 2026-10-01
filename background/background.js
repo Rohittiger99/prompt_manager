@@ -20,11 +20,12 @@
 
 'use strict';
 
+// lib/importers.js is left out here and in CONTENT_SCRIPTS: only the popup and
+// the library page import files, and they load it themselves.
 importScripts(
   '../data/defaultPrompts.js',
   '../lib/template.js',
   '../lib/modifiers.js',
-  '../lib/importers.js',
   '../lib/promptStore.js'
 );
 
@@ -57,7 +58,12 @@ function buildContextMenus() {
         () => void chrome.runtime.lastError
       );
 
-      self.OmniModifiers.contextMenuItems().forEach((item) => {
+      const customMods =
+        self.OmniStore && self.OmniStore.isPro && self.OmniStore.isPro() && self.OmniStore.getCustomModifiers
+          ? self.OmniStore.getCustomModifiers()
+          : [];
+
+      self.OmniModifiers.contextMenuItems(customMods).forEach((item) => {
         chrome.contextMenus.create(
           {
             id: item.id,
@@ -119,7 +125,11 @@ function openEditorWithDraft() {
  */
 async function saveSelectionAsPrompt(info, tab) {
   if (tab && typeof tab.id === 'number') {
-    const res = await sendToTab(tab.id, { action: 'save_as_prompt' });
+    let res = await sendToTab(tab.id, { action: 'save_as_prompt' });
+    if (!res.ok && res.reason === 'no-content-script') {
+      const injected = await injectInto(tab.id);
+      if (injected) res = await sendToTab(tab.id, { action: 'save_as_prompt' });
+    }
     if (res.ok) return;
   }
   const text = info.selectionText || '';
@@ -128,27 +138,36 @@ async function saveSelectionAsPrompt(info, tab) {
   openEditorWithDraft();
 }
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === OPEN_LIBRARY_ID) {
     chrome.runtime.openOptionsPage(() => void chrome.runtime.lastError);
     return;
   }
 
   if (info.menuItemId === SAVE_SELECTION_ID) {
-    saveSelectionAsPrompt(info, tab);
+    await saveSelectionAsPrompt(info, tab);
     return;
   }
 
   if (!tab || typeof tab.id !== 'number') return;
   if (typeof info.menuItemId !== 'string' || info.menuItemId.indexOf('mod-') !== 0) return;
 
-  sendToTab(tab.id, {
+  let res = await sendToTab(tab.id, {
     action: 'apply_modifier',
     modifierId: info.menuItemId,
     text: info.selectionText || ''
-  }).then((res) => {
-    if (!res.ok) notifyUnavailable(tab.id);
   });
+  if (!res.ok && res.reason === 'no-content-script') {
+    const injected = await injectInto(tab.id);
+    if (injected) {
+      res = await sendToTab(tab.id, {
+        action: 'apply_modifier',
+        modifierId: info.menuItemId,
+        text: info.selectionText || ''
+      });
+    }
+  }
+  if (!res.ok) notifyUnavailable(tab.id);
 });
 
 /* =====================================================================
@@ -210,7 +229,6 @@ const CONTENT_SCRIPTS = [
   'lib/theme.js',
   'lib/template.js',
   'lib/modifiers.js',
-  'lib/importers.js',
   'lib/promptStore.js',
   'content/adapters.js',
   'content/variableModal.js',
@@ -268,6 +286,146 @@ function injectIntoOpenTabs() {
   });
 }
 
+const EXCLUDE_MATCHES = [
+  '*://chrome.google.com/webstore/*',
+  '*://chromewebstore.google.com/*',
+  '*://microsoftedge.microsoft.com/addons/*'
+];
+
+const DYNAMIC_EVERYWHERE_ID = 'omniprompt-everywhere';
+const DYNAMIC_SITE_PREFIX = 'omniprompt-site-';
+
+function originToScriptId(origin) {
+  return (
+    DYNAMIC_SITE_PREFIX +
+    String(origin || '')
+      .replace(/[^a-zA-Z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 32)
+  );
+}
+
+function registerDynamicScript(id, matches) {
+  return new Promise((resolve) => {
+    if (!chrome.scripting || !chrome.scripting.registerContentScripts) return resolve(false);
+    chrome.scripting.registerContentScripts(
+      [
+        {
+          id: id,
+          matches: matches,
+          excludeMatches: EXCLUDE_MATCHES,
+          js: CONTENT_SCRIPTS,
+          runAt: 'document_idle',
+          allFrames: false,
+          persistAcrossSessions: true
+        }
+      ],
+      () => {
+        void chrome.runtime.lastError;
+        resolve(!chrome.runtime.lastError);
+      }
+    );
+  });
+}
+
+function unregisterDynamicScript(id) {
+  return new Promise((resolve) => {
+    if (!chrome.scripting || !chrome.scripting.unregisterContentScripts) return resolve(false);
+    chrome.scripting.unregisterContentScripts({ ids: [id] }, () => {
+      void chrome.runtime.lastError;
+      resolve(!chrome.runtime.lastError);
+    });
+  });
+}
+
+function reconcileDynamicScripts() {
+  return new Promise((resolve) => {
+    if (
+      !chrome.permissions ||
+      !chrome.permissions.getAll ||
+      !chrome.scripting ||
+      !chrome.scripting.getRegisteredContentScripts
+    ) {
+      return resolve();
+    }
+    chrome.permissions.getAll((perms) => {
+      void chrome.runtime.lastError;
+      const origins = (perms && perms.origins) || [];
+      const hasAllUrls = origins.indexOf('<all_urls>') !== -1;
+
+      chrome.scripting.getRegisteredContentScripts((scripts) => {
+        void chrome.runtime.lastError;
+        const currentIds = (scripts || []).map((s) => s.id);
+        const promises = [];
+
+        if (hasAllUrls) {
+          if (currentIds.indexOf(DYNAMIC_EVERYWHERE_ID) === -1) {
+            promises.push(registerDynamicScript(DYNAMIC_EVERYWHERE_ID, ['<all_urls>']));
+          }
+        } else {
+          if (currentIds.indexOf(DYNAMIC_EVERYWHERE_ID) !== -1) {
+            promises.push(unregisterDynamicScript(DYNAMIC_EVERYWHERE_ID));
+          }
+          const activeOriginIds = [];
+          origins.forEach((orig) => {
+            if (orig === '<all_urls>') return;
+            const sId = originToScriptId(orig);
+            activeOriginIds.push(sId);
+            if (currentIds.indexOf(sId) === -1) {
+              const match = orig.endsWith('/*') ? orig : orig.endsWith('/') ? orig + '*' : orig + '/*';
+              promises.push(registerDynamicScript(sId, [match]));
+            }
+          });
+
+          currentIds.forEach((id) => {
+            if (id.startsWith(DYNAMIC_SITE_PREFIX) && activeOriginIds.indexOf(id) === -1) {
+              promises.push(unregisterDynamicScript(id));
+            }
+          });
+        }
+
+        Promise.all(promises).then(() => resolve());
+      });
+    });
+  });
+}
+
+if (chrome.permissions && chrome.permissions.onAdded) {
+  chrome.permissions.onAdded.addListener((perms) => {
+    const origins = (perms && perms.origins) || [];
+    const promises = [];
+    if (origins.indexOf('<all_urls>') !== -1) {
+      promises.push(registerDynamicScript(DYNAMIC_EVERYWHERE_ID, ['<all_urls>']));
+    }
+    origins.forEach((orig) => {
+      if (orig === '<all_urls>') return;
+      const sId = originToScriptId(orig);
+      const match = orig.endsWith('/*') ? orig : orig.endsWith('/') ? orig + '*' : orig + '/*';
+      promises.push(registerDynamicScript(sId, [match]));
+    });
+    Promise.all(promises).then(() => injectIntoOpenTabs());
+  });
+}
+
+if (chrome.permissions && chrome.permissions.onRemoved) {
+  chrome.permissions.onRemoved.addListener((perms) => {
+    const origins = (perms && perms.origins) || [];
+    const ids = [];
+    if (origins.indexOf('<all_urls>') !== -1) {
+      ids.push(DYNAMIC_EVERYWHERE_ID);
+    }
+    origins.forEach((orig) => {
+      if (orig !== '<all_urls>') {
+        ids.push(originToScriptId(orig));
+      }
+    });
+    if (ids.length && chrome.scripting && chrome.scripting.unregisterContentScripts) {
+      chrome.scripting.unregisterContentScripts({ ids }, () => void chrome.runtime.lastError);
+    }
+  });
+}
+
 /* =====================================================================
    Lifecycle
    ===================================================================== */
@@ -276,6 +434,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   // Runs the schema-v2 migration once, before any surface reads storage.
   self.OmniStore.init()
     .then(() => buildContextMenus())
+    .then(() => reconcileDynamicScripts())
     // An update is a good moment for a restorable copy of the user's work.
     .then(() => self.OmniStore.takeSnapshot(details.reason === 'update' ? 'before-update' : 'daily'))
     .then(() => injectIntoOpenTabs())
@@ -297,6 +456,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onStartup.addListener(() => {
   self.OmniStore.init()
     .then(() => buildContextMenus())
+    .then(() => reconcileDynamicScripts())
     .then(() => self.OmniStore.maybeDailySnapshot());
 });
 
@@ -345,10 +505,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       return true;
 
-    case 'rebuild_menus':
-      buildContextMenus().then(() => sendResponse({ ok: true }));
-      return true;
-
     // A content script stored a draft and wants the editor opened on it.
     case 'open_editor_with_draft':
       openEditorWithDraft();
@@ -365,7 +521,205 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       return true;
 
+    case 'inject_into_tab':
+      if (typeof request.tabId === 'number') {
+        injectInto(request.tabId).then((ok) => sendResponse({ ok }));
+        return true;
+      }
+      getActiveTab().then((tab) => {
+        if (tab && typeof tab.id === 'number') {
+          injectInto(tab.id).then((ok) => sendResponse({ ok }));
+        } else {
+          sendResponse({ ok: false });
+        }
+      });
+      return true;
+
+    case 'start_compare':
+      (async () => {
+        await OmniStore.init();
+        if (!OmniStore.isPro()) {
+          sendResponse({ ok: false, error: 'PRO_REQUIRED' });
+          return;
+        }
+
+        const targets = Array.isArray(request.targets) ? request.targets.slice(0, 6) : [];
+        if (!targets.length) {
+          sendResponse({ ok: false, error: 'No targets chosen.' });
+          return;
+        }
+
+        const allTargets = OmniStore.getCompareTargets ? OmniStore.getCompareTargets() : [];
+        const text = String(request.text || '');
+        const autoSend = !!request.autoSend;
+        const layout = request.layout === 'tabs' ? 'tabs' : 'tiled';
+        const screenW = Math.max(800, Number(request.screenWidth) || 1440);
+        const screenH = Math.max(600, Number(request.screenHeight) || 900);
+
+        if (OmniStore.setLastCompareTargets) {
+          await OmniStore.setLastCompareTargets(targets);
+        }
+
+        const chosen = [];
+        targets.forEach((tid) => {
+          for (let i = 0; i < allTargets.length; i++) {
+            if (allTargets[i].id === tid) {
+              chosen.push(allTargets[i]);
+              break;
+            }
+          }
+        });
+
+        const N = chosen.length;
+        const openedTabs = [];
+
+        if (layout === 'tiled') {
+          const cols = N <= 3 ? N : Math.ceil(N / 2);
+          const rows = N <= 3 ? 1 : 2;
+          const colW = Math.floor(screenW / cols);
+          const rowH = Math.floor(screenH / rows);
+
+          for (let i = 0; i < N; i++) {
+            const target = chosen[i];
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const left = Math.round(col * colW);
+            const top = Math.round(row * rowH);
+            const width = Math.round(colW);
+            const height = Math.round(rowH);
+
+            const win = await new Promise((resolve) => {
+              chrome.windows.create(
+                {
+                  url: target.url,
+                  left,
+                  top,
+                  width,
+                  height,
+                  focused: i === 0
+                },
+                (w) => {
+                  void chrome.runtime.lastError;
+                  resolve(w || null);
+                }
+              );
+            });
+
+            if (win && win.tabs && win.tabs[0]) {
+              const tabId = win.tabs[0].id;
+              openedTabs.push(tabId);
+              await sessionSet(COMPARE_JOB_PREFIX + tabId, {
+                tabId,
+                targetId: target.id,
+                targetLabel: target.label,
+                text,
+                autoSend,
+                createdAt: Date.now()
+              });
+            }
+          }
+        } else {
+          for (let i = 0; i < N; i++) {
+            const target = chosen[i];
+            const tab = await new Promise((resolve) => {
+              chrome.tabs.create({ url: target.url, active: i === 0 }, (t) => {
+                void chrome.runtime.lastError;
+                resolve(t || null);
+              });
+            });
+
+            if (tab && typeof tab.id === 'number') {
+              openedTabs.push(tab.id);
+              await sessionSet(COMPARE_JOB_PREFIX + tab.id, {
+                tabId: tab.id,
+                targetId: target.id,
+                targetLabel: target.label,
+                text,
+                autoSend,
+                createdAt: Date.now()
+              });
+            }
+          }
+        }
+
+        sendResponse({ ok: true, count: openedTabs.length });
+      })();
+      return true;
+
+    case 'get_pending_compare':
+      (async () => {
+        const tabId = sender.tab && sender.tab.id;
+        if (typeof tabId !== 'number') {
+          sendResponse({ ok: false });
+          return;
+        }
+        const key = COMPARE_JOB_PREFIX + tabId;
+        const job = await sessionGet(key);
+        if (!job) {
+          sendResponse({ ok: false });
+          return;
+        }
+        await sessionRemove(key);
+        if (Date.now() - (job.createdAt || 0) > COMPARE_TTL_MS) {
+          sendResponse({ ok: false, expired: true });
+          return;
+        }
+        sendResponse({ ok: true, job });
+      })();
+      return true;
+
+    case 'compare_status':
+      sendResponse({ ok: true });
+      return false;
+
     default:
       return false;
+  }
+});
+
+/* =====================================================================
+   Session storage helpers for Compare jobs
+   ===================================================================== */
+
+const COMPARE_JOB_PREFIX = 'omni.compare.';
+const COMPARE_TTL_MS = 2 * 60 * 1000;
+
+function sessionSet(key, val) {
+  return new Promise((resolve) => {
+    if (!chrome.storage || !chrome.storage.session) return resolve(false);
+    chrome.storage.session.set({ [key]: val }, () => {
+      void chrome.runtime.lastError;
+      resolve(true);
+    });
+  });
+}
+
+function sessionGet(key) {
+  return new Promise((resolve) => {
+    if (!chrome.storage || !chrome.storage.session) return resolve(null);
+    chrome.storage.session.get([key], (res) => {
+      void chrome.runtime.lastError;
+      resolve(res ? res[key] : null);
+    });
+  });
+}
+
+function sessionRemove(key) {
+  return new Promise((resolve) => {
+    if (!chrome.storage || !chrome.storage.session) return resolve(false);
+    chrome.storage.session.remove([key], () => {
+      void chrome.runtime.lastError;
+      resolve(true);
+    });
+  });
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  sessionRemove(COMPARE_JOB_PREFIX + tabId);
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes['omni.customModifiers'] || changes['omni.license'])) {
+    buildContextMenus();
   }
 });

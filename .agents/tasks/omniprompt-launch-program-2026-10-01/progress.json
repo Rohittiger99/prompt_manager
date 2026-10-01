@@ -1,0 +1,8 @@
+{
+  "phase0": "pending",
+  "phase1": "pending",
+  "phase2": "pending",
+  "phase2_features": { "compare": "pending", "smart_templates": "pending", "custom_modifiers": "pending", "site_rules": "pending", "folder_sync_setup": "pending" },
+  "baselines": { "phase0": "e55e996c57c3e0e730aeabc10995ed008ec89963" },
+  "notes": []
+}

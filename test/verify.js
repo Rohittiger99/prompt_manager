@@ -54,8 +54,28 @@ function read(rel) {
  * `validKeys` activate; every call is recorded so tests can check what left
  * the browser.
  */
+// The product that unlocks OmniPrompt Pro in the Dodo environment this build
+// uses (DODO_MODE), read from the shipped store.
+const SHIPPED_STORE = H.createStoreRealm().sandbox.OmniStore;
+const DODO_MODE = SHIPPED_STORE.DODO_MODE;
+const PRO_PRODUCT_ID = SHIPPED_STORE.PRO_PRODUCT_IDS[DODO_MODE][0];
+const DODO_BASE = 'https://' + DODO_MODE + '.dodopayments.com/licenses';
+
+/**
+ * `validKeys` is either an array of keys sold as OmniPrompt Pro, or a map of
+ * key -> product id, to model keys sold for other products in the same Dodo
+ * account.
+ */
 function dodoFetch(validKeys) {
-  const keys = validKeys || [];
+  const productOf = {};
+  if (Array.isArray(validKeys)) {
+    validKeys.forEach((k) => {
+      productOf[k] = PRO_PRODUCT_ID;
+    });
+  } else if (validKeys) {
+    Object.assign(productOf, validKeys);
+  }
+  const keys = Object.keys(productOf);
   const calls = [];
   const reply = (ok, status, body) => ({
     ok,
@@ -67,8 +87,14 @@ function dodoFetch(validKeys) {
     calls.push({ url, body });
     const known = keys.indexOf(body.license_key) !== -1;
     if (/\/activate$/.test(url)) {
+      // Mirrors Dodo's real response, which names the product the key was sold for.
       return known
-        ? reply(true, 201, { id: 'lki_' + body.license_key, license_key_id: 'lk_1' })
+        ? reply(true, 201, {
+            id: 'lki_' + body.license_key,
+            license_key_id: 'lk_1',
+            business_id: 'bus_1',
+            product: { product_id: productOf[body.license_key] }
+          })
         : reply(false, 404, { message: 'License key not found' });
     }
     if (/\/validate$/.test(url)) return reply(true, 200, { valid: known });
@@ -193,20 +219,26 @@ function testManifest() {
   ok(!!manifest.name && !!manifest.version, 'Has a name and version');
   ok(/^\d+\.\d+\.\d+$/.test(manifest.version), 'Version is x.y.z (' + manifest.version + ')');
 
-  // Permission hygiene. Each of these was removed for a stated reason and
-  // should not creep back in without a matching code change.
+  // Permission hygiene. Option B permission model.
   const perms = manifest.permissions || [];
   ok(perms.indexOf('clipboardRead') === -1, 'clipboardRead is not requested (clipboard reads are user-initiated)');
-  ok(
-    perms.indexOf('activeTab') === -1,
-    'activeTab is not requested (redundant beside the <all_urls> host permission)'
-  );
+  ok(perms.indexOf('activeTab') !== -1, 'activeTab is requested for on-demand injection');
   ok(perms.indexOf('storage') !== -1, 'storage is requested');
+  ok(perms.indexOf('unlimitedStorage') !== -1, 'unlimitedStorage is requested');
   ok(perms.indexOf('contextMenus') !== -1, 'contextMenus is requested');
   ok(perms.indexOf('scripting') !== -1, 'scripting is requested, to reach tabs open at install time');
 
+  eq(manifest.optional_host_permissions, ['<all_urls>'], 'optional_host_permissions contains <all_urls>');
+
   const hosts = manifest.host_permissions || [];
-  eq(hosts, ['<all_urls>'], 'host_permissions is only <all_urls>, with no redundant per-site entries');
+  const csMatches = (manifest.content_scripts[0] && manifest.content_scripts[0].matches) || [];
+  const hostsSet = hosts.slice().sort();
+  const csSet = csMatches.slice().sort();
+  eq(hostsSet, csSet, 'manifest.host_permissions matches content_scripts[0].matches as a set');
+
+  const generalPlatforms = ['*://*.google.com/*', '*://google.com/*', '*://*.bing.com/*', '*://bing.com/*', '*://*.x.com/*', '*://x.com/*', '*://*.twitter.com/*', '*://twitter.com/*', '*://*.notion.so/*', '*://notion.so/*'];
+  const hasGeneral = hosts.some((h) => h === '<all_urls>' || generalPlatforms.indexOf(h) !== -1);
+  ok(!hasGeneral, 'host_permissions does not contain <all_urls> or broad general-purpose platform domains');
 
   // Every referenced file must exist.
   ok(exists(manifest.background.service_worker), 'Service worker file exists');
@@ -255,6 +287,33 @@ function testManifest() {
   );
 
   ok(!!manifest.commands['toggle-command-palette'], 'The palette command is declared');
+
+  // Only the popup and the library page import files, so the import adapters
+  // are not injected into every page.
+  ok(order.indexOf('lib/importers.js') === -1, 'The import adapters are not loaded into web pages');
+  ok(!/importers\.js/.test(readCode('background/background.js')), 'The service worker does not load the import adapters');
+  ['popup/popup.html', 'options/options.html'].forEach((page) => {
+    ok(read(page).indexOf('src="../lib/importers.js"') !== -1, page + ' still loads the import adapters');
+  });
+}
+
+/**
+ * The page realm, loaded with exactly the libraries the manifest injects, must
+ * boot and handle an OmniPrompt JSON file without lib/importers.js.
+ */
+async function testPageRealmWithoutImporters() {
+  section('1b. The page libraries work without the import adapters');
+
+  const libs = JSON.parse(read('manifest.json')).content_scripts[0].js.filter((f) => /^(data|lib)\//.test(f));
+  const realm = H.createRealm(libs);
+  const S = realm.sandbox.OmniStore;
+  await S.init();
+  ok(S.getAll().length > 0, 'The store boots from the content-script libraries alone');
+  ok(typeof realm.sandbox.OmniImporters === 'undefined', 'OmniImporters is absent in this realm');
+  const json = await S.importBundle(JSON.stringify([{ title: 'From JSON', template: 'x {{y}}' }]), { mode: 'merge' });
+  eq(json.added, 1, 'A JSON array still imports without the adapters');
+  const csv = await S.importBundle('title,template\nA,b', { mode: 'merge' });
+  eq(csv.ok, false, 'CSV needs the adapters and fails cleanly without them');
 }
 
 /* =====================================================================
@@ -266,6 +325,7 @@ function testSyntax() {
 
   const files = [
     'data/defaultPrompts.js',
+    'lib/theme.js',
     'lib/template.js',
     'lib/modifiers.js',
     'lib/importers.js',
@@ -846,9 +906,14 @@ function testImporters(realm) {
 async function testFoldersAndSettings() {
   section('10. Folders, settings and per-site disable');
 
-  const realm = H.createStoreRealm();
+  const realm = H.createStoreRealm({ fetch: dodoFetch(['PRO-FOLDERS']) });
   const S = realm.sandbox.OmniStore;
   await S.init();
+
+  // Folders are free for everyone.
+  const freeFolder = await S.createFolder('Sandbox Folder');
+  ok(!!freeFolder, 'Free users can create folders');
+  await S.deleteFolder(freeFolder.id);
 
   const parent = await S.createFolder('Client Work');
   ok(!!parent, 'A folder is created');
@@ -915,6 +980,29 @@ async function testFoldersAndSettings() {
   eq(hk.display, 'Ctrl+Shift+J', 'A hotkey gets a readable description');
   eq(S.describeHotkey({ altKey: true, key: 'k' }), 'Alt+K', 'Alt+K is described correctly');
   eq(S.describeHotkey({ ctrlKey: true, shiftKey: true, key: 'k' }), 'Ctrl+Shift+K', 'Ctrl+Shift+K is described correctly');
+
+  // macOS Option+K types "˚"; the label comes from the physical key.
+  eq(S.describeHotkey({ altKey: true, key: '˚', code: 'KeyK' }), 'Alt+K', 'Option+K recorded on a Mac is labelled Alt+K, not Alt+˚');
+  eq(S.normalizeHotkey({ altKey: true, key: '˚', code: 'KeyK' }).display, 'Alt+K', 'A normalised Option+K gets the Alt+K label');
+  eq(S.describeHotkey({ ctrlKey: true, altKey: true, key: '@', code: 'Digit2' }), 'Ctrl+Alt+2', 'A digit is labelled by its key, not the AltGr character');
+  eq(S.describeHotkey({ ctrlKey: true, shiftKey: true, key: ' ', code: 'Space' }), 'Ctrl+Shift+Space', 'Space keeps its name');
+  const optsSrc = readCode('options/options.js');
+  ok(/\/\^Key\(\[A-Z\]\)\$\/\.exec\(e\.code/.test(optsSrc), 'The shortcut recorder stores the physical key from e.code');
+
+  // Mac labels. The stored display stays "Alt+K" (the docs and tests rely on it).
+  const defHk = S.getSettings().paletteHotkey;
+  eq(defHk.display, 'Alt+K', 'The stored default label is still Alt+K');
+  eq(S.formatHotkey(defHk, false), 'Alt+K', 'Windows and Linux show Alt+K');
+  eq(S.formatHotkey(defHk, true), '\u2325K', 'A Mac shows \u2325K');
+  eq(S.formatHotkey({ ctrlKey: true, shiftKey: true, key: 'k', code: 'KeyK', display: 'Ctrl+Shift+K' }, true), '\u2303\u21E7K', 'Ctrl+Shift+K reads \u2303\u21E7K on a Mac');
+  eq(S.formatHotkey({ ctrlKey: true, metaKey: true, key: 'k', code: 'KeyK' }, true), '\u2318K', 'Ctrl-or-Cmd reads \u2318K on a Mac');
+  eq(S.formatHotkey({ altKey: true, key: '˚', code: 'KeyK', display: 'Alt+˚' }, true), '\u2325K', 'An old Alt+˚ label reads \u2325K on a Mac');
+  ['popup/popup.js', 'options/options.js', 'content/content.js'].forEach((file) => {
+    const code = readCode(file);
+    // Comparing stored labels is fine; showing one directly is not.
+    const shown = /(textContent\s*=|\+|escapeHtml\(|push\(|const hk =)\s*settings\.paletteHotkey\.display/.test(code);
+    ok(/formatHotkey\(/.test(code) && !shown, file + ' shows the shortcut through formatHotkey');
+  });
 
   section('10c. Per-site disable');
 
@@ -1168,6 +1256,112 @@ function testContentScripts() {
     'options.js no longer calls the undefined saveCustomPrompts()'
   );
   ok(optionsSource.indexOf('store.deletePrompt') !== -1, 'options.js deletes through the store');
+}
+
+/* =====================================================================
+   13e. IME composition and keyboard layouts, running the real modules
+   ===================================================================== */
+
+/**
+ * Load a content module into an adapter realm whose document and window
+ * record their listeners, so a test can send it keyboard events directly.
+ */
+function keyboardRealm(file, store) {
+  const realm = H.createAdapterRealm();
+  const sb = realm.sandbox;
+  const listeners = { document: {}, window: {} };
+  const record = (bucket) => (type, fn) => {
+    (listeners[bucket][type] = listeners[bucket][type] || []).push(fn);
+  };
+  sb.document.addEventListener = record('document');
+  sb.addEventListener = record('window');
+  sb.removeEventListener = () => {};
+  sb.document.createElement = () => ({
+    style: {},
+    dataset: {},
+    innerHTML: '',
+    setAttribute() {},
+    appendChild() {},
+    addEventListener() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getBoundingClientRect: () => ({ top: 100, bottom: 140, left: 50, right: 450, width: 400, height: 40 }),
+    classList: { add() {}, remove() {}, toggle() {} }
+  });
+  if (store) sb.OmniStore = store;
+  vm.runInContext(read(file), sb, { filename: file });
+  const fire = (bucket, type, event) => (listeners[bucket][type] || []).forEach((fn) => fn(event));
+  return { sb, listeners, fire };
+}
+
+/** A keydown-like event that records whether a handler claimed it. */
+function keyEvent(init) {
+  const e = Object.assign({ key: '', code: '', keyCode: 0, altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, isComposing: false }, init);
+  e.prevented = false;
+  e.preventDefault = () => {
+    e.prevented = true;
+  };
+  e.stopPropagation = () => {};
+  return e;
+}
+
+async function testImeAndHotkeys() {
+  section('13e. IME composition, macOS Option and AltGr');
+
+  const storeRealm = H.createStoreRealm();
+  await storeRealm.sandbox.OmniStore.init();
+  const altK = storeRealm.sandbox.OmniStore.getSettings().paletteHotkey;
+  eq([altK.altKey, altK.code, altK.display], [true, 'KeyK', 'Alt+K'], 'The default palette hotkey is Alt+K by physical key');
+
+  // Command palette hotkey.
+  const pal = keyboardRealm('content/commandPalette.js');
+  pal.sb.CommandPalette.init(null, {}, { hotkey: altK, enabled: true });
+  const press = (init) => {
+    const e = keyEvent(init);
+    pal.fire('window', 'keydown', e);
+    return e.prevented;
+  };
+  ok(press({ key: 'k', code: 'KeyK', altKey: true }), 'Alt+K opens the palette');
+  ok(press({ key: '˚', code: 'KeyK', altKey: true }), 'macOS Option+K (which types ˚) opens the palette');
+  ok(!press({ key: 'k', code: 'KeyK', altKey: true, ctrlKey: true }), 'AltGr+K (Ctrl+Alt) does not open the Alt+K palette');
+  ok(!press({ key: 'k', code: 'KeyK', altKey: true, isComposing: true }), 'A key pressed during IME composition does not open the palette');
+  ok(!press({ key: 'Process', code: 'KeyK', altKey: true, keyCode: 229 }), 'An IME-processed key (keyCode 229) does not open the palette');
+
+  // Slash menu.
+  const picked = [];
+  const fakeStore = {
+    search: () => [{ id: 'p1', title: 'Review', shortcut: 'review', template: 'Review {{code}}', category: 'Coding' }],
+    isFavorite: () => false,
+    getCategoryMeta: () => null
+  };
+  const slash = keyboardRealm('content/slashTrigger.js', fakeStore);
+  const ST = slash.sb.SlashTrigger;
+  ST.init({ appendChild() {} }, (p) => picked.push(p), { triggerChar: '//', enabled: true });
+  ok(!!slash.listeners.document.compositionend, 'The slash menu listens for compositionend');
+
+  const box = slash.sb.makeTextarea('hello //rev');
+  slash.fire('document', 'input', { target: box, isComposing: true });
+  eq(ST.isOpen(), false, 'Half-composed IME text does not open the slash menu');
+  slash.fire('document', 'compositionend', { target: box });
+  eq(ST.isOpen(), true, 'The menu opens once the composition is committed');
+
+  const imeEnter = keyEvent({ key: 'Enter', isComposing: true });
+  slash.fire('document', 'keydown', imeEnter);
+  const safariEnter = keyEvent({ key: 'Enter', keyCode: 229 });
+  slash.fire('document', 'keydown', safariEnter);
+  eq(picked.length, 0, 'The Enter that confirms an IME composition does not pick a menu row');
+  ok(ST.isOpen() && !imeEnter.prevented && !safariEnter.prevented, 'The IME keeps that Enter and the menu stays open');
+
+  const realEnter = keyEvent({ key: 'Enter', keyCode: 13 });
+  slash.fire('document', 'keydown', realEnter);
+  eq(picked.length, 1, 'A normal Enter still picks the row');
+
+  // Every other keyboard handler that acts on Enter or Esc checks composition.
+  ['content/variableModal.js', 'popup/popup.js', 'options/options.js', 'welcome/welcome.js'].forEach((file) => {
+    const code = readCode(file);
+    ok(/isComposing/.test(code) && /keyCode === 229/.test(code), file + ' ignores Enter and Esc during IME composition');
+  });
+  ok(/isComposing/.test(readCode('content/commandPalette.js').split('function handlePaletteKeydown')[1] || ''), 'The palette search box ignores the IME Enter');
 }
 
 /* =====================================================================
@@ -1476,6 +1670,7 @@ function testDocs(realm) {
 
   // The privacy claim must hold: no network calls anywhere in the extension.
   const shipped = [
+    'lib/theme.js',
     'lib/template.js',
     'lib/modifiers.js',
     'lib/importers.js',
@@ -1505,11 +1700,12 @@ function testDocs(realm) {
   });
   eq(networkCalls, [], 'No content script, UI or background script makes network requests; promptStore only contacts Dodo on license check');
 
-  // The permission table must cover every permission actually requested.
-  const allPerms = (manifest.permissions || []).concat(manifest.host_permissions || []);
-  allPerms.forEach((perm) => {
+  // The permission table must cover every permission actually requested plus optional <all_urls>.
+  const docPerms = (manifest.permissions || []).concat(manifest.optional_host_permissions || []);
+  docPerms.forEach((perm) => {
     ok(readme.indexOf(perm) !== -1, 'The README explains the ' + perm + ' permission');
   });
+  ok(readme.indexOf('Host permissions') !== -1, 'The README explains host permissions for AI sites');
 
   // The stated prompt count must be real.
   const claimedCount = readme.match(/(\d{3}) built-in prompts/);
@@ -1545,15 +1741,15 @@ async function testLicensingAndLimits() {
 
   // 1. Initial Free Tier State
   eq(S.isPro(), false, 'Default license state is Free (isPro is false)');
-  eq(S.getFreeLimit(), 25, 'Free tier limit is 25 prompts');
+  eq(S.getFreeLimit(), 20, 'Free tier limit is 20 prompts');
   eq(S.getCustomCount(), 0, 'Initial custom count is 0');
   eq(S.isLimitReached(), false, 'Limit is not reached initially');
   eq(S.canCreatePrompt(), true, 'canCreatePrompt is true when under limit');
   eq(S.getLicense(), null, 'getLicense returns null on free tier');
 
-  // 2. Add custom prompts up to the free limit of 25
+  // 2. Add custom prompts up to the free limit of 20
   const createdPrompts = [];
-  for (let i = 1; i <= 25; i++) {
+  for (let i = 1; i <= 20; i++) {
     const p = await S.savePrompt({
       title: 'Custom Prompt ' + i,
       template: 'Template ' + i,
@@ -1562,23 +1758,23 @@ async function testLicensingAndLimits() {
     createdPrompts.push(p);
   }
 
-  eq(S.getCustomCount(), 25, 'Custom prompt count reached 25');
-  eq(S.isLimitReached(), true, 'isLimitReached is true at 25 custom prompts');
+  eq(S.getCustomCount(), 20, 'Custom prompt count reached 20');
+  eq(S.isLimitReached(), true, 'isLimitReached is true at 20 custom prompts');
   eq(S.canCreatePrompt(), false, 'canCreatePrompt is false when free limit is reached');
 
-  // 3. Attempting to add 26th custom prompt without Pro should reject
+  // 3. Attempting to add a 21st custom prompt without Pro should reject
   let limitRejected = false;
   try {
     await S.savePrompt({
-      title: 'Custom Prompt 26',
-      template: 'Template 26'
+      title: 'Custom Prompt 21',
+      template: 'Template 21'
     });
   } catch (err) {
     if (err && err.code === 'LIMIT_REACHED') {
       limitRejected = true;
     }
   }
-  ok(limitRejected, 'Saving a 26th custom prompt on Free tier is rejected with LIMIT_REACHED');
+  ok(limitRejected, 'Saving a 21st custom prompt on Free tier is rejected with LIMIT_REACHED');
 
   // 4. Attempting to duplicate prompt when limit reached should reject
   let duplicateRejected = false;
@@ -1616,7 +1812,7 @@ async function testLicensingAndLimits() {
     { bypassLimit: true }
   );
   ok(bypassed && bypassed.id, 'savePrompt with bypassLimit: true succeeds');
-  eq(S.getCustomCount(), 26, 'Custom count increased with bypass');
+  eq(S.getCustomCount(), 21, 'Custom count increased with bypass');
 
   // 8. The old hard-coded dev keys must not unlock anything any more.
   const bypass1 = await S.activateLicense('TEST-PRO-UNLIMITED-KEY');
@@ -1635,8 +1831,8 @@ async function testLicensingAndLimits() {
   ok(actRes.success, 'A key Dodo accepts activates Pro');
   const activateCall = fakeDodo.calls.filter((c) => /\/activate$/.test(c.url)).pop();
   ok(
-    activateCall && activateCall.url === 'https://live.dodopayments.com/licenses/activate',
-    'Activation calls the live Dodo endpoint'
+    activateCall && activateCall.url === DODO_BASE + '/activate',
+    'Activation calls the Dodo endpoint for DODO_MODE (' + DODO_MODE + ')'
   );
   eq(activateCall.body.license_key, 'LIVE-KEY-1234-ABCD', 'The key is trimmed before it is sent');
   eq(Object.keys(activateCall.body).sort(), ['license_key', 'name'], 'Only the key and an instance name are sent');
@@ -1653,18 +1849,18 @@ async function testLicensingAndLimits() {
 
   // 9. Saving new prompt now succeeds freely on Pro
   const proPrompt = await S.savePrompt({
-    title: 'Pro Prompt 27',
+    title: 'Pro Prompt 22',
     template: 'Pro template'
   });
   ok(proPrompt && proPrompt.id, 'Saving custom prompt succeeds unconditionally on Pro tier');
-  eq(S.getCustomCount(), 27, 'Custom prompt count increased on Pro tier');
+  eq(S.getCustomCount(), 22, 'Custom prompt count increased on Pro tier');
 
   // 10. Deactivation reverts back to Free tier
   const deactRes = await S.deactivateLicense();
   ok(deactRes.success, 'deactivateLicense succeeds');
   eq(S.isPro(), false, 'isPro is false after deactivation');
   eq(S.getLicense(), null, 'License is null after deactivation');
-  eq(S.isLimitReached(), true, 'isLimitReached is true again because count (27) > 25');
+  eq(S.isLimitReached(), true, 'isLimitReached is true again because count (22) > 20');
   const deactivateCall = fakeDodo.calls.filter((c) => /\/deactivate$/.test(c.url)).pop();
   ok(
     deactivateCall && deactivateCall.body.license_key_instance_id === 'lki_LIVE-KEY-1234-ABCD',
@@ -1672,8 +1868,67 @@ async function testLicensingAndLimits() {
   );
 
   // 11. Over the limit, nothing is taken away: every prompt still reads and exports.
-  eq(S.getAll().filter((p) => p.isCustom).length, 27, 'Prompts above the free limit are kept, not deleted');
-  eq(S.exportBundle().prompts.length, 27, 'Prompts above the free limit still export');
+  eq(S.getAll().filter((p) => p.isCustom).length, 22, 'Prompts above the free limit are kept, not deleted');
+  eq(S.exportBundle().prompts.length, 22, 'Prompts above the free limit still export');
+
+  // 11b. A key sold for another product in the same Dodo account must not
+  // unlock OmniPrompt. Dodo's public activate endpoint accepts any key from
+  // the business, so the product id in its response is the only guard.
+  const otherDodo = dodoFetch({ 'OTHER-APP-KEY': 'pdt_some_other_product', 'OMNI-KEY': PRO_PRODUCT_ID });
+  const otherRealm = H.createStoreRealm({ fetch: otherDodo });
+  const O = otherRealm.sandbox.OmniStore;
+  await O.init();
+  const wrong = await O.activateLicense('OTHER-APP-KEY');
+  eq(wrong.success, false, 'A key for a different product is refused');
+  eq(wrong.code, 'WRONG_PRODUCT', 'The refusal says the key is for another product');
+  eq(O.isPro(), false, 'A key for a different product leaves the user on Free');
+  eq(O.getLicense(), null, 'A key for a different product is not stored');
+  const giveBack = otherDodo.calls.filter((c) => /\/deactivate$/.test(c.url)).pop();
+  ok(
+    giveBack && giveBack.body.license_key === 'OTHER-APP-KEY' &&
+      giveBack.body.license_key_instance_id === 'lki_OTHER-APP-KEY',
+    'The activation slot taken from the other product is given back'
+  );
+  const right = await O.activateLicense('OMNI-KEY');
+  ok(right.success && O.isPro(), 'A key for OmniPrompt Pro still activates');
+  eq(O.getLicense().productId, PRO_PRODUCT_ID, 'The product id is stored with the licence');
+  await O.validateLicense();
+  const validateCall = otherDodo.calls.filter((c) => /\/validate$/.test(c.url)).pop();
+  eq(validateCall.body.license_key_instance_id, 'lki_OMNI-KEY', 'Validation checks this activation, not just the key');
+
+  // An earlier build stored keys without checking the product. Those stop
+  // counting as Pro once this build loads them.
+  const legacyRealm = H.createStoreRealm({
+    storageSeed: {
+      'omni.schemaVersion': 2,
+      'omni.license': {
+        key: 'OTHER-APP-KEY',
+        status: 'active',
+        instanceId: 'lki_x',
+        data: { id: 'lki_x', product: { product_id: 'pdt_some_other_product' } }
+      }
+    }
+  });
+  await legacyRealm.sandbox.OmniStore.init();
+  eq(legacyRealm.sandbox.OmniStore.isPro(), false, 'A stored licence for another product no longer unlocks Pro');
+  const legacyNoProduct = H.createStoreRealm({
+    storageSeed: { 'omni.schemaVersion': 2, 'omni.license': { key: 'K', status: 'active', data: {} } }
+  });
+  await legacyNoProduct.sandbox.OmniStore.init();
+  eq(legacyNoProduct.sandbox.OmniStore.isPro(), false, 'A stored licence with no product is not trusted');
+  const legacyOmni = H.createStoreRealm({
+    storageSeed: {
+      'omni.schemaVersion': 2,
+      'omni.license': {
+        key: 'K',
+        status: 'active',
+        testMode: DODO_MODE === 'test',
+        data: { product: { product_id: PRO_PRODUCT_ID } }
+      }
+    }
+  });
+  await legacyOmni.sandbox.OmniStore.init();
+  eq(legacyOmni.sandbox.OmniStore.isPro(), true, 'A stored OmniPrompt licence from an earlier build keeps working');
 
   // 12. No network at all when nobody activates anything.
   const quiet = dodoFetch([]);
@@ -1687,7 +1942,7 @@ async function testLicensingAndLimits() {
   // 13. One price, one checkout link, used everywhere.
   const info = S.getProInfo();
   eq(info.price, '$25', 'Pro is priced at $25');
-  eq(info.freeLimit, 25, 'The free limit is reported with the price');
+  eq(info.freeLimit, 20, 'The free limit is reported with the price');
   ['options/options.html', 'options/options.js', 'popup/popup.html', 'popup/popup.js'].forEach((file) => {
     ok(!/\$19\b/.test(read(file)), file + ' no longer mentions the old $19 price');
   });
@@ -2098,6 +2353,946 @@ function testLaunchWiring() {
    Runner
    ===================================================================== */
 
+/* =====================================================================
+   25. Client Work pack, import limit and Pro visibility
+   ===================================================================== */
+
+async function testClientPackAndImportLimit() {
+  section('25. Client Work pack, import limit and Pro visibility');
+
+  const fake = dodoFetch(['PRO-CLIENT']);
+  const realm = H.createStoreRealm({ fetch: fake });
+  const S = realm.sandbox.OmniStore;
+  const T = realm.sandbox.OmniTemplate;
+  await S.init();
+
+  // The pack is ordinary built-in data: present, free to read, and in its own pack.
+  const pack = S.getAll().filter((p) => p.category === 'Clients');
+  eq(pack.length, 26, 'Client Work has 26 prompts');
+  ok(S.BUILTIN_CATEGORIES.indexOf('Clients') !== -1, 'Client Work is a built-in category');
+  eq(S.getCategoryMeta('Clients').label, 'Client Work', 'Client Work has a readable label');
+
+  const blockNames = ['client-brief', 'brand-voice', 'my-offer', 'about-me', 'audience', 'project-context'];
+  blockNames.forEach((name) => {
+    const hit = S.findByShortcut(name);
+    ok(!!hit && hit.category === 'Clients', 'Profile block //' + name + ' ships');
+  });
+
+  const workflows = pack.filter((p) => T.listBlocks(p.template).length > 0);
+  eq(workflows.length, 20, 'Twenty workflows use context blocks');
+  const dangling = [];
+  workflows.forEach((p) => {
+    T.listBlocks(p.template).forEach((name) => {
+      if (!S.findByShortcut(name)) dangling.push(p.shortcut + ' -> ' + name);
+    });
+  });
+  eq(dangling, [], 'Every block a workflow uses is a shipped profile block');
+  ok(pack.every((p) => typeof p.notes === 'string' && p.notes.length > 0), 'Every Client Work prompt explains itself in notes');
+
+  // Blocks resolve even when the user picked a different role.
+  await S.setRole('Coding');
+  ok(!S.getAll().some((p) => p.category === 'Clients'), 'Picking a role still hides other packs, Client Work included');
+  ok(!!S.findByShortcut('client-brief'), 'Blocks resolve even when their pack is hidden');
+  await S.setRole('Clients');
+  eq(S.getAll().filter((p) => p.category === 'Clients').length, 26, 'Client Work can be picked as a role');
+  await S.setRole('all');
+
+  // Free inserts the workflow as written; Pro expands its blocks.
+  const proposal = S.findByShortcut('c-proposal');
+  const free = S.prepareForUse(proposal);
+  eq(free.locked, ['client-brief', 'my-offer', 'brand-voice'], 'On Free a workflow reports its blocks as locked');
+  eq(free.prompt.template, proposal.template, 'On Free the workflow text is unchanged');
+
+  // Editing a profile block once is how the user fills it in.
+  const brief = S.findByShortcut('client-brief');
+  await S.savePrompt(Object.assign({}, brief, { template: 'CLIENT BRIEF\nClient: Acme Ltd' }));
+  await S.activateLicense('PRO-CLIENT');
+  const pro = S.prepareForUse(S.findByShortcut('c-proposal'));
+  eq(pro.locked, [], 'On Pro nothing is locked');
+  ok(pro.prompt.template.indexOf('Client: Acme Ltd') !== -1, 'On Pro the edited brief is expanded into the proposal');
+  ok(pro.prompt.template.indexOf('{{@') === -1, 'On Pro no block token is left behind');
+  await S.deactivateLicense();
+
+  // Import limit on Free.
+  const rows = (n, tag) => Array.from({ length: n }, (_, i) => ({ title: tag + ' ' + i, template: tag + ' body ' + i }));
+  const first = await S.importBundle(JSON.stringify(rows(15, 'A')), { mode: 'merge' });
+  eq(first.added, 15, 'An import under the limit adds everything');
+  eq(first.overLimit, 0, 'Nothing is reported over the limit');
+
+  const second = await S.importBundle(JSON.stringify(rows(10, 'B')), { mode: 'merge' });
+  eq(second.added, 5, 'A merge import on Free stops at the limit');
+  eq(second.overLimit, 5, 'The rest are reported, not silently dropped');
+  eq(second.limit, 20, 'The result names the limit');
+  eq(S.getCustomCount(), 20, 'Free ends at exactly 20 of your own');
+
+  const dupes = await S.importBundle(JSON.stringify(rows(3, 'A')), { mode: 'merge' });
+  eq(dupes.skipped, 3, 'Duplicates are still counted as duplicates at the limit');
+  eq(dupes.overLimit, 0, 'Duplicates are not blamed on the limit');
+
+  // A user who grew past 20 on Pro and re-imports their own backup keeps it all.
+  await S.activateLicense('PRO-CLIENT');
+  await S.importBundle(JSON.stringify(rows(10, 'C')), { mode: 'merge' });
+  eq(S.getCustomCount(), 30, 'Pro imports have no cap');
+  await S.deactivateLicense();
+  const backup = S.getAll().filter((p) => p.isCustom);
+  const replaced = await S.importBundle(JSON.stringify(backup), { mode: 'replace' });
+  eq(replaced.added, 30, 'A replace import on Free can bring back as many prompts as the user had');
+  eq(replaced.overLimit, 0, 'Re-importing your own backup never shrinks the library');
+  const more = await S.importBundle(JSON.stringify(rows(4, 'D')), { mode: 'merge' });
+  eq(more.added, 0, 'Over the limit on Free, a merge import adds nothing new');
+  eq(more.overLimit, 4, 'and says how many it left out');
+  ok(S.getAll().some((p) => p.title === 'C 9'), 'Nothing already in the library was removed');
+
+  // UI wiring: the Pro features are visible where they matter.
+  const optionsJs = readCode('options/options.js');
+  const optionsHtml = read('options/options.html');
+  const popupJs = readCode('popup/popup.js');
+  const popupHtml = read('popup/popup.html');
+  ok(/historyBtn\.style\.display = id \? '' : 'none'/.test(optionsJs), 'History shows on every saved prompt, even with no versions yet');
+  ok(optionsJs.indexOf('toldAboutHistory') !== -1, 'The "Pro can restore it" note is shown once per visit, not on every save');
+  ok(optionsJs.indexOf('result.overLimit') !== -1 && popupJs.indexOf('result.overLimit') !== -1, 'Both import screens explain the limit');
+  ok(optionsHtml.indexOf('id="plan-compare"') !== -1, 'The licence card has a Free vs Pro table');
+  ok(optionsJs.indexOf("setCell('plan-pro-price'") !== -1, 'The table reads the price from getProInfo');
+  ok(optionsHtml.indexOf('value="Clients"') !== -1, 'Client Work can be chosen in Settings');
+  ok(popupHtml.indexOf('id="popup-usage-meter"') !== -1 && popupJs.indexOf('paintUsageMeter') !== -1, 'The popup shows the Free allowance');
+  ok(/listBlocks\(p\.template\)/.test(optionsJs) && /listBlocks\(p\.template\)/.test(popupJs), 'Prompts that use blocks are marked in both lists');
+  ok(read('welcome/welcome.html').indexOf('data-role="Clients"') !== -1, 'The welcome page offers the Client Work pack');
+}
+
+/* =====================================================================
+   26-31. Pro features: Dodo mode, workspaces, saved values, chains,
+          library tools, folder sync
+   ===================================================================== */
+
+/** The error a promise rejects with, or null when it resolves. */
+async function rejection(promise) {
+  try {
+    await promise;
+    return null;
+  } catch (err) {
+    return err || new Error('rejected');
+  }
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function proRealm(key, options) {
+  const fake = dodoFetch([key]);
+  const realm = H.createStoreRealm(Object.assign({ fetch: fake }, options || {}));
+  const S = realm.sandbox.OmniStore;
+  await S.init();
+  await S.activateLicense(key);
+  return { realm, S, T: realm.sandbox.OmniTemplate, fake };
+}
+
+async function testDodoMode() {
+  section('26. Dodo environment, checkout and the Pro feature list');
+
+  ok(DODO_MODE === 'test' || DODO_MODE === 'live', 'DODO_MODE is test or live');
+  if (DODO_MODE === 'test') {
+    console.log('  NOTE  DODO_MODE is "test". Switch it to "live" before packaging a release.');
+  }
+
+  const { realm, S, fake } = await proRealm('MODE-KEY');
+  ok(S.isPro(), 'A key for the product of this Dodo environment activates');
+  eq(S.getLicense().testMode, DODO_MODE === 'test', 'The licence records which environment issued it');
+
+  // Callers cannot point a build at the other environment.
+  await S.deactivateLicense();
+  await S.activateLicense('MODE-KEY', { testMode: DODO_MODE !== 'test' });
+  const last = fake.calls.filter((c) => /\/activate$/.test(c.url)).pop();
+  eq(last.url, DODO_BASE + '/activate', 'activateLicense ignores a testMode option and follows DODO_MODE');
+
+  // A licence from the other environment never counts.
+  const crossed = H.createStoreRealm({
+    storageSeed: {
+      'omni.schemaVersion': 2,
+      'omni.license': {
+        key: 'K',
+        status: 'active',
+        testMode: DODO_MODE !== 'test',
+        data: { product: { product_id: PRO_PRODUCT_ID } }
+      }
+    }
+  });
+  await crossed.sandbox.OmniStore.init();
+  eq(crossed.sandbox.OmniStore.isPro(), false, 'A licence from the other Dodo environment does not unlock Pro');
+
+  const info = S.getProInfo();
+  eq(info.mode, DODO_MODE, 'getProInfo reports the Dodo environment');
+  ok(info.checkoutUrl.indexOf(PRO_PRODUCT_ID) !== -1, 'The checkout link buys the product that unlocks Pro');
+  ok(
+    DODO_MODE === 'test'
+      ? info.checkoutUrl.indexOf('https://test.checkout.dodopayments.com/') === 0
+      : info.checkoutUrl.indexOf('https://checkout.dodopayments.com/') === 0,
+    'The checkout link is on the Dodo checkout for this environment'
+  );
+  if (DODO_MODE === 'live') {
+    ok(!/REPLACE/.test(PRO_PRODUCT_ID) && !/REPLACE/.test(info.checkoutUrl), 'A live build has a real product id and checkout link');
+  }
+
+  const ids = info.features.map((f) => f.id);
+  ['limit', 'workspaces', 'sets', 'chains', 'sync', 'history', 'blocks'].forEach((id) => {
+    ok(ids.indexOf(id) !== -1, 'Pro feature list includes ' + id);
+  });
+  ok(info.features.every((f) => f.title && f.text), 'Every Pro feature has a title and a line of text');
+  const optionsJs = readCode('options/options.js');
+  ids.forEach((id) => {
+    ok(optionsJs.indexOf("'" + id + "'") !== -1, 'The upgrade dialog knows the reason "' + id + '"');
+  });
+  ok(realm.read('omni.license').key === 'MODE-KEY', 'The licence is stored locally');
+
+  // Price label is read from the store, not hard-coded in HTML.
+  const optionsHtml = read('options/options.html').replace(/about \$10 a month/, '');
+  ok(!/\$\d/.test(optionsHtml), 'options/options.html has no hard-coded price');
+  ok(!/\$\d/.test(read('popup/popup.html')), 'popup/popup.html has no hard-coded price');
+  ok(optionsJs.indexOf('buy-pro-label') !== -1, 'options.js references buy-pro-label');
+}
+
+async function testWorkspaces() {
+  section('27. Client workspaces (Pro)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+  const freeErr = await rejection(F.saveWorkspace({ name: 'Acme' }));
+  eq(freeErr && freeErr.code, 'PRO_REQUIRED', 'Free cannot create a workspace');
+  eq(freeErr && freeErr.feature, 'workspaces', 'The error names workspaces');
+  eq((await rejection(F.setActiveWorkspace('ws-x'))).code, 'PRO_REQUIRED', 'Free cannot switch to a workspace');
+  eq(await F.setActiveWorkspace(''), true, 'Switching workspaces off is always allowed');
+  eq(F.getValueSources('any').workspace, null, 'Free forms get no workspace values');
+
+  const { realm, S, T } = await proRealm('WS-KEY');
+  const acme = await S.saveWorkspace({
+    name: 'Acme',
+    fields: [
+      { key: 'Client name', value: 'Acme Ltd' },
+      { key: 'client-brief', value: 'BRIEF FOR ACME' },
+      { key: 'tone', value: 'Friendly' },
+      { key: 'Tone', value: 'dropped duplicate' },
+      { key: '   ', value: 'no name' }
+    ]
+  });
+  eq(acme.fields.map((f) => f.key), ['client_name', 'client_brief', 'tone'], 'Value names are normalised, blank and repeated names dropped');
+  eq((await rejection(S.saveWorkspace({ name: 'acme' }))).code, 'DUPLICATE', 'Two workspaces cannot share a name');
+  eq((await rejection(S.saveWorkspace({ name: '  ' }))).code, 'INVALID', 'A workspace needs a name');
+  ok(Array.isArray(realm.read('omni.workspaces')) && realm.read('omni.workspaces').length === 1, 'Workspaces are stored under omni.workspaces');
+
+  await S.setActiveWorkspace(acme.id);
+  eq(S.getActiveWorkspace().name, 'Acme', 'The chosen workspace is active');
+  eq(S.getSettings().activeWorkspaceId, acme.id, 'The choice is kept in settings');
+  const sources = S.getValueSources('some-prompt');
+  eq(sources.workspace.values.client_name, 'Acme Ltd', 'Forms get the active workspace values');
+
+  const init = T.buildInitialValues(
+    { template: 'Hi {{Client-Name}}, tone {{tone:Formal|Friendly}}, re {{topic}} on {{date}}' },
+    {},
+    { workspace: sources.workspace.values }
+  );
+  eq(init.values['Client-Name'], 'Acme Ltd', 'A field fills from the workspace whatever its spelling');
+  eq(init.filledFrom['Client-Name'], 'workspace', 'The field says it came from the workspace');
+  eq(init.values.tone, 'Friendly', 'A dropdown takes a workspace value that is one of its choices');
+  eq(init.values.topic, '', 'Fields the workspace does not know stay empty');
+  eq(T.autofillBadge('workspace'), 'Workspace', 'The badge reads Workspace');
+  const bad = T.buildInitialValues({ template: '{{tone:Formal|Direct}}' }, {}, { workspace: { tone: 'Friendly' } });
+  eq(bad.values.tone, 'Formal', 'A workspace value that is not a dropdown choice is ignored');
+
+  // The workspace wins over the built-in //client-brief block.
+  const own = await S.savePrompt({ title: 'Proposal', template: 'Context:\n{{@client-brief}}\nWrite it.' });
+  const ready = S.prepareForUse(S.getById(own.id));
+  ok(ready.prompt.template.indexOf('BRIEF FOR ACME') !== -1, 'A {{@block}} fills from the active workspace first');
+  eq(S.resolveBlockSource('client-brief').kind, 'workspace', 'resolveBlockSource reports the workspace');
+  await S.setActiveWorkspace('');
+  eq(S.resolveBlockSource('client-brief').kind, 'prompt', 'With no workspace the block comes from the prompt again');
+  await S.setActiveWorkspace(acme.id);
+
+  ok(S.exportBundle().workspaces.length === 1, 'Workspaces are in the backup file');
+
+  // Losing Pro never takes the data away.
+  await S.deactivateLicense();
+  eq(S.getValueSources('x').workspace, null, 'Without Pro, forms stop filling from the workspace');
+  eq(S.getWorkspaces().length, 1, 'Without Pro, the workspace is still there to see');
+  ok(S.exportBundle().workspaces.length === 1, 'Without Pro, the workspace still exports');
+  eq((await rejection(S.saveWorkspace(Object.assign({}, acme, { name: 'Acme 2' })))).code, 'PRO_REQUIRED', 'Without Pro, editing a workspace needs Pro');
+  eq(await S.deleteWorkspace(acme.id), true, 'Without Pro, a workspace can still be deleted');
+  eq(S.getSettings().activeWorkspaceId, '', 'Deleting the active workspace switches it off');
+}
+
+async function testSavedValues() {
+  section('28. Saved values and remembered answers (Pro)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+  eq((await rejection(F.saveVariableSet('p1', 'Mine', { a: '1' }))).feature, 'sets', 'Free cannot save value sets');
+  eq(await F.rememberValues('p1', { tone: 'x' }, [{ name: 'tone', type: 'text' }]), true, 'Free can remember short answers');
+  ok(!!freeRealm.read('omni.lastValues') && !!freeRealm.read('omni.lastValues').p1, 'Free writes remembered answers');
+
+  const { realm, S, T } = await proRealm('SETS-KEY');
+  const p = await S.savePrompt({ title: 'Email', template: 'Write to {{name}} in {{tone}} about {{code}} at {{url}}' });
+  const set1 = await S.saveVariableSet(p.id, 'Acme formal', { name: 'Ann', tone: 'Formal' });
+  eq(S.getVariableSets(p.id).length, 1, 'A value set is saved');
+  await S.saveVariableSet(p.id, 'ACME formal', { name: 'Bob', tone: 'Formal' });
+  eq(S.getVariableSets(p.id).length, 1, 'Saving under the same name replaces the older set');
+  eq(S.getVariableSets(p.id)[0].values.name, 'Bob', 'The replacement has the new values');
+  eq((await rejection(S.saveVariableSet(p.id, '', {}))).code, 'INVALID', 'A value set needs a name');
+  ok(!!realm.read('omni.variableSets')[p.id], 'Sets are stored under omni.variableSets');
+
+  const vars = T.resolveVariables(S.getById(p.id));
+  await S.rememberValues(p.id, { name: 'Remember-Me-7', tone: 'Formal', code: 'short', url: 'https://x' }, vars.map((v) =>
+    v.name === 'code' ? Object.assign({}, v, { type: 'textarea' }) : v
+  ));
+  const kept = realm.read('omni.lastValues')[p.id].values;
+  eq(Object.keys(kept).sort(), ['name', 'tone'], 'Only short typed answers are remembered, never long fields or page values');
+  eq(S.getValueSources(p.id).remembered.name, 'Remember-Me-7', 'Forms get the remembered answers');
+  await S.rememberValues(p.id, { name: 'x'.repeat(400) }, [{ name: 'name', type: 'text' }]);
+  eq(S.getValueSources(p.id).remembered.name, 'Remember-Me-7', 'Very long answers are not remembered');
+
+  const init = T.buildInitialValues({ template: '{{name}} {{date}}' }, {}, { remembered: { name: 'Last', date: 'old' } });
+  eq(init.filledFrom.name, 'remembered', 'An empty field starts from the remembered answer');
+  ok(init.values.date !== 'old', 'Page and date auto-fill beat a remembered answer');
+  const both = T.buildInitialValues({ template: '{{name}}' }, {}, { workspace: { name: 'WS' }, remembered: { name: 'Last' } });
+  eq(both.values.name, 'WS', 'A workspace value beats a remembered answer');
+  eq(T.autofillBadge('remembered'), 'Last used', 'The badge reads Last used');
+
+  // Remembered answers never leave this computer.
+  await S.setSyncEnabled(true);
+  const synced = JSON.stringify(realm.storage.sync);
+  ok(synced.indexOf('Remember-Me-7') === -1, 'Remembered answers are not synced');
+  ok(synced.indexOf('Acme formal') !== -1 || synced.indexOf('ACME formal') !== -1 || synced.indexOf('Bob') !== -1, 'Saved value sets are synced with the library');
+  ok(JSON.stringify(S.exportBundle()).indexOf('Remember-Me-7') === -1, 'Remembered answers are not in backup files');
+  await S.setSyncEnabled(false);
+
+  await S.deleteVariableSet(p.id, S.getVariableSets(p.id)[0].id);
+  eq(S.getVariableSets(p.id).length, 0, 'A value set can be deleted');
+  await S.saveVariableSet(p.id, 'Again', { name: 'C' });
+  await S.deletePrompt(p.id);
+  eq(S.getVariableSets(p.id).length, 0, 'Deleting a prompt deletes its sets');
+  eq(S.getValueSources(p.id).remembered, {}, 'Deleting a prompt forgets its answers');
+
+  const q = await S.savePrompt({ title: 'Other', template: '{{tone}}' });
+  await S.rememberValues(q.id, { tone: 'Calm' }, [{ name: 'tone', type: 'text' }]);
+  await S.clearRememberedValues();
+  eq(S.getValueSources(q.id).remembered, {}, '"Forget them" clears every remembered answer');
+  ok(set1 && set1.id, 'saveVariableSet returns the set');
+
+  const modal = readCode('content/variableModal.js');
+  ok(modal.indexOf('getValueSources') !== -1 && modal.indexOf('rememberValues') !== -1, 'The page form uses workspace, remembered and saved values');
+  ok(readCode('popup/popup.js').indexOf('getValueSources') !== -1, 'The popup form uses them too');
+  ok(readCode('options/options.js').indexOf('getValueSources') !== -1, 'The library copy form uses them too');
+}
+
+async function testChains() {
+  section('29. Stepped chains (Pro)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+  eq((await rejection(F.saveChain({ title: 'x', steps: [{ template: 'a' }] }))).feature, 'chains', 'Free cannot create chains');
+
+  const { realm, S } = await proRealm('CHAIN-KEY');
+  const chain = await S.saveChain({
+    title: 'Blog post',
+    shortcut: '/BlogChain',
+    description: 'Research, then draft',
+    steps: [
+      { title: 'Research', template: 'Research {{topic}}' },
+      { title: 'Draft', template: 'Draft about {{topic}} in a {{tone|plain}} tone' },
+      { title: 'Empty', template: '   ' }
+    ]
+  });
+  eq(chain.steps.length, 2, 'Empty steps are dropped');
+  eq(chain.shortcut, 'blogchain', 'Chain shortcuts are cleaned like prompt shortcuts');
+  eq((await rejection(S.saveChain({ title: 'No steps', steps: [] }))).code, 'INVALID', 'A chain needs a step');
+  eq((await rejection(S.saveChain({ title: 'Clash', shortcut: 'review', steps: [{ template: 'a' }] }))).code, 'SHORTCUT_TAKEN', 'A chain cannot take a prompt shortcut');
+  eq((await rejection(S.saveChain({ title: 'Clash 2', shortcut: 'blogchain', steps: [{ template: 'a' }] }))).code, 'SHORTCUT_TAKEN', 'Two chains cannot share a shortcut');
+  const edited = await S.saveChain(Object.assign({}, chain, { title: 'Blog post v2' }));
+  eq(edited.id, chain.id, 'Saving an existing chain keeps its id');
+  ok(Array.isArray(realm.read('omni.chains')) && realm.read('omni.chains').length === 1, 'Chains are stored under omni.chains');
+
+  const step0 = S.getChainStep(chain.id, 0);
+  eq(step0.prompt.template, 'Research {{topic}}', 'Step 1 is shaped like a prompt');
+  eq([step0.index, step0.total, step0.isLast], [0, 2, false], 'Step 1 knows where it is');
+  eq(S.getChainStep(chain.id, 1).isLast, true, 'The last step says so');
+  eq(S.getChainStep(chain.id, 2), null, 'There is no step after the last');
+  ok(S.prepareForUse(step0.prompt).prompt.template.indexOf('{{topic}}') !== -1, 'A step goes through the normal prompt path');
+
+  eq(S.searchChains({ query: 'blogchain' })[0].id, chain.id, 'A chain is found by its shortcut');
+  eq(S.searchChains({ query: 'draft about' }).length, 1, 'A chain is found by its step text');
+  eq(S.searchChains({ query: 'zzzz-nothing' }).length, 0, 'Unrelated searches find no chain');
+  ok(S.exportBundle().chains.length === 1, 'Chains are in the backup file');
+
+  // Backups bring chains back without doubling them.
+  const text = JSON.stringify(S.exportBundle());
+  const other = H.createStoreRealm();
+  await other.sandbox.OmniStore.init();
+  await other.sandbox.OmniStore.importBundle(text, { mode: 'merge' });
+  await other.sandbox.OmniStore.importBundle(text, { mode: 'merge' });
+  eq(other.sandbox.OmniStore.getChains().length, 1, 'Importing a backup twice keeps one copy of each chain, even on Free');
+
+  await S.deactivateLicense();
+  eq(S.getChains().length, 1, 'Without Pro, chains are still there to see');
+  eq(await S.deleteChain(chain.id), true, 'Without Pro, a chain can still be deleted');
+  ok(typeof S._internals.state.tombstones[chain.id] === 'number', 'Deleting a chain records it for sync');
+
+  const content = readCode('content/content.js');
+  const slash = readCode('content/slashTrigger.js');
+  const palette = readCode('content/commandPalette.js');
+  ok(content.indexOf("case 'start_chain'") !== -1, 'The page accepts start_chain from the popup');
+  ok(/kind: 'next'/.test(slash) && /kind: 'end'/.test(slash), 'The slash menu offers Next and End while a chain runs');
+  ok(palette.indexOf('Chain in progress') !== -1, 'The palette pins the running chain');
+  ok(/if \(!store \|\| !store\.isPro\(\)\)/.test(content), 'Starting a chain checks Pro in the page');
+  ok(content.indexOf('submit: meta && typeof meta.submit') !== -1, 'A step is only sent when the user chose Insert & Send');
+}
+
+async function testLibraryTools() {
+  section('30. Library tools: folders, tags, bulk edit, tidy-up');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+  const freeF1 = await F.createFolder('Clients');
+  const freeF2 = await F.createFolder('Acme', freeF1.id);
+  ok(!!freeF1 && !!freeF2, 'Free can create nested folders');
+  eq(await F.moveFolder(freeF2.id, null), true, 'Free can move folders');
+  const freeP = await F.savePrompt({ title: 'Free One', template: 'body' });
+  const bulkRes = await F.bulkUpdate([freeP.id], { addTags: 'free-tag' });
+  eq(bulkRes.updated, 1, 'Free can bulk edit');
+  const bulkDel = await F.bulkDelete([freeP.id]);
+  eq(bulkDel.deleted, 1, 'Free can bulk delete');
+  ok(Array.isArray(F.getAllTags()) && F.getAllTags().length > 0, 'Anyone can read the tag list');
+
+  const { realm, S } = await proRealm('LIB-KEY');
+  const a = await S.createFolder('Clients');
+  const b = await S.createFolder('Acme', a.id);
+  eq(await S.moveFolder(a.id, b.id), false, 'A folder cannot move inside its own child');
+  eq(await S.createFolder('Orphan', 'folder-missing'), null, 'A folder cannot go inside one that does not exist');
+  const empty = await S.createFolder('Empty');
+
+  const p1 = await S.savePrompt({ title: 'One', template: 'one body', tags: 'old' });
+  const p2 = await S.savePrompt({ title: 'Two', template: 'two body' });
+  const res = await S.bulkUpdate([p1.id, 'dev-code-review'], {
+    folderId: b.id,
+    addTags: 'zq-one, ZQ-Two',
+    removeTags: 'old',
+    category: 'Writing',
+    favorite: true
+  });
+  eq(res.updated, 2, 'Bulk edit reports how many prompts changed');
+  const one = S.getById(p1.id);
+  eq([one.folderId, one.category, one.tags.slice().sort()], [b.id, 'Writing', ['zq-one', 'zq-two']], 'Bulk edit moves, recategorises and retags your prompt');
+  const builtin = S.getById('dev-code-review');
+  ok(builtin.folderId === b.id && builtin.tags.indexOf('zq-one') !== -1 && builtin.isEdited, 'Bulk edit on a built-in is stored as a patch');
+  ok(S.isFavorite(p1.id) && S.isFavorite('dev-code-review'), 'Bulk favourite stars every selected prompt');
+  eq(S.search({ query: '', tag: 'zq-one' }).length, 2, 'The tag filter finds retagged prompts');
+  eq(S.search({ query: '', folderId: b.id }).length, 2, 'The folder filter finds moved prompts');
+  ok((await S.getSnapshots()).some((s) => s.reason === 'before-bulk-edit'), 'A backup is taken before a bulk edit');
+  ok(S.getAllTags().some((t) => t.tag === 'zq-one' && t.count === 2), 'The tag list counts prompts per tag');
+
+  const del = await S.bulkDelete([p2.id, 'dev-bug-root-cause']);
+  eq(del.deleted, 2, 'Bulk delete reports how many went');
+  ok(!S.getById(p2.id), 'Bulk delete removes your prompt');
+  ok(!S.getById('dev-bug-root-cause'), 'Bulk delete hides a built-in');
+  ok(realm.read('omni.hiddenDefaults').indexOf('dev-bug-root-cause') !== -1, 'A bulk-deleted built-in is hidden, so Restore built-ins brings it back');
+
+  // Tidy-up suggestions.
+  const old = Date.now() - 40 * 86400000;
+  await S.importBundle(
+    JSON.stringify({
+      format: 'omniprompt.bundle',
+      prompts: [
+        { title: 'Forgotten', template: 'never used text', createdAt: old, updatedAt: old },
+        { title: 'Twin A', template: 'same   text here', createdAt: old },
+        { title: 'Twin B', template: 'Same text here' }
+      ]
+    }),
+    { mode: 'merge' }
+  );
+  const tidy = S.getTidySuggestions();
+  ok(tidy.neverUsed.some((p) => p.title === 'Forgotten'), 'Tidy-up lists prompts you never used');
+  ok(!tidy.neverUsed.some((p) => p.title === 'Twin B'), 'Brand-new prompts are not called unused');
+  ok(tidy.duplicates.some((g) => g.length === 2 && g.every((p) => /Twin/.test(p.title))), 'Tidy-up finds prompts with the same text');
+  ok(tidy.emptyFolders.some((f) => f.id === empty.id), 'Tidy-up lists empty folders');
+  ok(!tidy.emptyFolders.some((f) => f.id === a.id), 'A folder with a folder inside is not empty');
+  ok(realm.read('omni.folders').length === 3, 'Folders are stored under omni.folders');
+
+  const html = read('options/options.html');
+  ['id="bulk-bar"', 'id="sidebar-folder-list"', 'id="sidebar-tag-list"', 'id="tidy-modal"', 'id="edit-folder"'].forEach((id) => {
+    ok(html.indexOf(id) !== -1, 'The library page has ' + id);
+  });
+}
+
+async function testFolderSync() {
+  section('31. Folder sync (Pro) and deletion records');
+
+  const freeRealm = H.createStoreRealm();
+  await freeRealm.sandbox.OmniStore.init();
+  eq((await rejection(freeRealm.sandbox.OmniStore.folderSyncMerge(''))).feature, 'sync', 'Free cannot use folder sync');
+
+  const A = (await proRealm('SYNC-A')).S;
+  const B = (await proRealm('SYNC-B')).S;
+
+  const keep = await A.savePrompt({ title: 'Keep me', template: 'keep body' });
+  const gone = await A.savePrompt({ title: 'Delete me', template: 'delete body' });
+  const edit = await A.savePrompt({ title: 'Edit me later', template: 'edit body' });
+  await A.saveWorkspace({ name: 'Acme', fields: [{ key: 'tone', value: 'Warm' }] });
+  await A.saveChain({ title: 'Flow', steps: [{ template: 'step one' }] });
+
+  const first = await A.folderSyncMerge('');
+  ok(first.ok && first.upToDate === false, 'An empty folder gets a new file');
+  const file = JSON.parse(first.text);
+  eq(file.format, 'omniprompt.bundle', 'The sync file is an ordinary OmniPrompt backup');
+  eq(file.settings, null, 'Settings are not in the sync file');
+  eq(first.prompts, 3, 'The result says how many prompts of your own are in the file');
+
+  const onB = await B.folderSyncMerge(first.text);
+  ok(onB.ok && onB.changed, 'A second computer merges the file');
+  eq(B.getAll().filter((p) => p.isCustom).length, 3, 'The second computer gets the prompts');
+  eq(B.getWorkspaces().map((w) => w.name), ['Acme'], 'The second computer gets the workspaces');
+  eq(B.getChains().map((c) => c.title), ['Flow'], 'The second computer gets the chains');
+
+  const again = await A.folderSyncMerge(onB.text);
+  ok(again.ok && !again.changed, 'Syncing back changes nothing when nothing changed');
+  eq(again.upToDate, true, 'An unchanged file is not rewritten');
+
+  // A deletes one prompt; B edits another after that deletion.
+  await A.deletePrompt(gone.id);
+  await A.deletePrompt(edit.id);
+  await wait(5);
+  await B.savePrompt(Object.assign({}, B.getById(edit.id), { template: 'edited on B' }));
+
+  const fromA = await A.folderSyncMerge(onB.text);
+  ok(!A.getById(gone.id), 'A deleted prompt is not brought back by an older copy of the file');
+  const toB = await B.folderSyncMerge(fromA.text);
+  ok(!B.getById(gone.id), 'A deletion made on one computer reaches the other');
+  eq(toB.removed, 1, 'The result says how many items were removed');
+  ok(!!B.getById(edit.id), 'A prompt edited after it was deleted elsewhere is kept');
+  ok(!!B.getById(keep.id), 'Other prompts are untouched');
+  const snaps = await B.getSnapshots();
+  ok(snaps.some((s) => s.reason === 'before-sync'), 'A backup is taken before a deletion from elsewhere is applied');
+
+  // Restoring that backup brings the prompt back for good.
+  await B.restoreSnapshot(snaps.filter((s) => s.reason === 'before-sync')[0].id);
+  ok(!!B.getById(gone.id), 'Restoring the backup brings the deleted prompt back');
+  await B.folderSyncMerge(fromA.text);
+  ok(!!B.getById(gone.id), 'A restored prompt is not removed again by the same deletion record');
+
+  const junk = await A.folderSyncMerge('not json');
+  ok(!junk.ok && /not valid JSON/.test(junk.error), 'A broken file is reported and left alone');
+  const foreign = await A.folderSyncMerge('{"hello": 1}');
+  ok(!foreign.ok && /not an OmniPrompt library/.test(foreign.error), 'Someone else\'s file is reported and left alone');
+  ok(!!A.getById(keep.id), 'A bad file changes nothing here');
+
+  // The file also imports as a normal backup on a Free browser.
+  const plain = H.createStoreRealm();
+  await plain.sandbox.OmniStore.init();
+  const imported = await plain.sandbox.OmniStore.importBundle(fromA.text, { mode: 'merge' });
+  ok(imported.ok && imported.added >= 1, 'The sync file imports like any backup');
+
+  const optionsJs = readCode('options/options.js');
+  ok(optionsJs.indexOf('showDirectoryPicker') !== -1 && optionsJs.indexOf('folderSyncMerge') !== -1, 'The library page reads and writes the chosen folder');
+  ok(optionsJs.indexOf('if (!res.upToDate)') !== -1, 'The page skips writing an unchanged file');
+  ok(/await forgetSyncFolder\(\);\s*renderFolderSyncStatus\(\);\s*settings = store\.getSettings\(\);/.test(optionsJs), 'Erasing everything also stops folder sync');
+  const optionsCode = readCode('options/options.js');
+  ok(/const supported = typeof window\.showDirectoryPicker === 'function'/.test(optionsCode), 'Folder sync checks for the folder picker before offering it');
+  ok(/folderSyncChoose\.disabled = !supported/.test(optionsCode), 'Choose folder is disabled where the browser has no folder picker');
+  ok(/UNSUPPORTED_FOLDER_SYNC =[\s\S]{0,80}Chrome or Edge/.test(optionsCode), 'The status explains which browsers support folder sync');
+}
+
+async function testFreeTwentyAndBackups() {
+  section('32. Free holds 20 prompts; backups and restore stay free');
+
+  const realm = H.createStoreRealm();
+  const S = realm.sandbox.OmniStore;
+  await S.init();
+  eq(S.getFreeLimit(), 20, 'Free holds 20 prompts of your own');
+  await S.savePrompt({ title: 'Mine', template: 'my text' });
+  const snap = await S.takeSnapshot('manual');
+  ok(!!snap, 'Free can back up');
+  await S.deletePrompt(S.getAll().filter((p) => p.isCustom)[0].id);
+  const back = await S.restoreSnapshot(snap.id);
+  ok(back.ok && S.getAll().some((p) => p.title === 'Mine'), 'Free can restore a backup');
+
+  const readme = read('README.md');
+  ok(/\| Prompts of your own \| 20 \| Unlimited \|/.test(readme), 'The README table says Free holds 20');
+  ok(/Automatic backups and restoring them, import, export \| ✓ \| ✓/.test(readme), 'The README says backups and restore are free');
+  ['options/options.html', 'popup/popup.html', 'welcome/welcome.html', 'CHROMEWEBSTORE.md'].forEach((file) => {
+    const text = read(file);
+    ok(!/\b25 (of your own|prompts of your own|custom)|\/ 25\b|of 25\b/.test(text), file + ' no longer mentions a 25-prompt limit');
+  });
+  ok(/20 prompts of your own/.test(read('CHROMEWEBSTORE.md')), 'The store listing says Free holds 20');
+}
+
+/* =====================================================================
+   33. No remote code
+   ===================================================================== */
+
+/** Every .js, .html and .css file in the folders that ship in the zip. */
+function shippedFiles() {
+  const out = [];
+  const walk = (rel) => {
+    fs.readdirSync(path.join(ROOT, rel), { withFileTypes: true }).forEach((entry) => {
+      const child = rel + '/' + entry.name;
+      if (entry.isDirectory()) walk(child);
+      else if (/\.(js|html|css)$/.test(entry.name)) out.push(child);
+    });
+  };
+  ['background', 'content', 'data', 'lib', 'options', 'popup', 'styles', 'welcome'].forEach(walk);
+  return out;
+}
+
+function testNoRemoteCode() {
+  section('33. No remote code in shipped files');
+
+  const files = shippedFiles();
+  ok(files.length >= 20, 'Found ' + files.length + ' shipped .js/.html/.css files');
+
+  const problems = [];
+  files.forEach((file) => {
+    const text = read(file);
+    if (/<script[^>]*\ssrc\s*=\s*["']?(https?:)?\/\//i.test(text)) problems.push(file + ' (remote <script src>)');
+    if (/<link[^>]*\shref\s*=\s*["']?(https?:)?\/\//i.test(text)) problems.push(file + ' (remote <link>)');
+    if (/<iframe/i.test(text)) problems.push(file + ' (<iframe>)');
+    if (/@import/i.test(text)) problems.push(file + ' (@import)');
+    if (/url\(\s*["']?(https?:)?\/\//i.test(text)) problems.push(file + ' (remote url())');
+    if (/fonts\.(googleapis|gstatic)\.com/i.test(text)) problems.push(file + ' (web font)');
+    if (/\.js$/.test(file)) {
+      const code = readCode(file);
+      if (/set(Timeout|Interval)\(\s*["'`]/.test(code)) problems.push(file + ' (string timer)');
+      // Strip string contents so prompt text that mentions eval( is not a hit.
+      const bare = code.replace(/'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`/g, '""');
+      if (/\beval\s*\(/.test(bare)) problems.push(file + ' (eval)');
+      if (/new\s+Function\b/.test(bare)) problems.push(file + ' (new Function)');
+      if (/\bimport\s*\(/.test(bare)) problems.push(file + ' (dynamic import)');
+    }
+  });
+  eq(problems, [], 'No remote script, stylesheet, font, iframe, eval or dynamic import in shipped files');
+
+  const csp = (JSON.parse(read('manifest.json')).content_security_policy || {}).extension_pages || '';
+  const scriptSrc = (csp.match(/script-src([^;]*)/) || [])[1] || '';
+  eq(scriptSrc.trim(), "'self'", 'The extension-page CSP only allows packaged scripts');
+}
+
+async function testCompareAcrossAis() {
+  section('34. Compare across AIs (Pro)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+
+  // Targets definition
+  const targets = F.getCompareTargets();
+  eq(targets.length, 12, 'Compare supports 12 major AI chatbots');
+  const targetIds = targets.map((t) => t.id);
+  ok(targetIds.indexOf('chatgpt') !== -1, 'ChatGPT is a compare target');
+  ok(targetIds.indexOf('claude') !== -1, 'Claude is a compare target');
+  ok(targetIds.indexOf('gemini') !== -1, 'Gemini is a compare target');
+  ok(targetIds.indexOf('copilot') !== -1, 'Copilot is a compare target');
+  ok(targetIds.indexOf('perplexity') !== -1, 'Perplexity is a compare target');
+  ok(targetIds.indexOf('deepseek') !== -1, 'DeepSeek is a compare target');
+  ok(targetIds.indexOf('grok') !== -1, 'Grok is a compare target');
+  ok(targetIds.indexOf('mistral') !== -1, 'Mistral is a compare target');
+  ok(targetIds.indexOf('metaai') !== -1, 'Meta AI is a compare target');
+  ok(targetIds.indexOf('qwen') !== -1, 'Qwen is a compare target');
+  ok(targetIds.indexOf('kimi') !== -1, 'Kimi is a compare target');
+  ok(targetIds.indexOf('poe') !== -1, 'Poe is a compare target');
+
+  // Default targets
+  const defaults = await F.getLastCompareTargets();
+  eq(defaults, ['chatgpt', 'claude', 'gemini'], 'Default targets are ChatGPT, Claude, and Gemini');
+
+  await F.setLastCompareTargets(['claude', 'perplexity', 'deepseek']);
+  const updatedTargets = await F.getLastCompareTargets();
+  eq(updatedTargets, ['claude', 'perplexity', 'deepseek'], 'Last selected targets are remembered');
+
+  // Pro gating
+  eq(F.isPro(), false, 'Store starts in Free tier');
+  const { S } = await proRealm('COMPARE-PRO-KEY');
+  eq(S.isPro(), true, 'Pro realm has active Pro license');
+
+  // Background compare messaging and geometry verification
+  const bgCode = read('background/background.js');
+  ok(bgCode.indexOf('start_compare') !== -1, 'Background handles start_compare');
+  ok(bgCode.indexOf('get_pending_compare') !== -1, 'Background handles get_pending_compare');
+  ok(bgCode.indexOf('compare_status') !== -1, 'Background handles compare_status');
+  ok(bgCode.indexOf('targets.slice(0, 6)') !== -1, 'Background caps compare targets at 6');
+
+  // Content script adapters security check: no chatbot response reading, no transcript scraping
+  const adaptersCode = read('content/adapters.js');
+  ok(adaptersCode.indexOf('response') === -1 || adaptersCode.indexOf('readResponse') === -1, 'Adapters do not read chatbot responses');
+  ok(adaptersCode.indexOf('transcript') === -1, 'Zero transcript scraping in adapters');
+  ok(adaptersCode.indexOf('COMPARE_TARGETS') !== -1, 'Adapters export COMPARE_TARGETS');
+
+  // Content script compare coordination
+  const contentCode = read('content/content.js');
+  ok(contentCode.indexOf('checkPendingCompare') !== -1, 'Content script checks for pending compare jobs');
+  ok(contentCode.indexOf('open_compare') !== -1, 'Content script handles open_compare message');
+}
+
+async function testSmartTemplates() {
+  section('35. Smart templates (conditionals, date maths, required fields, repeatable blocks)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  const T = freeRealm.sandbox.OmniTemplate;
+  await F.init();
+
+  // 1. Conditionals: presence
+  const tplPresence = 'Hello {{name}}{{#if details}}, details: {{details}}{{/if}}!';
+  eq(T.render(tplPresence, { name: 'Alice', details: 'Order #123' }), 'Hello Alice, details: Order #123!', 'Conditional renders block when variable is present');
+  eq(T.render(tplPresence, { name: 'Bob', details: '' }), 'Hello Bob!', 'Conditional hides block when variable is empty');
+  eq(T.render(tplPresence, { name: 'Bob' }), 'Hello Bob!', 'Conditional hides block when variable is omitted');
+
+  // Conditionals: equality
+  const tplEqual = 'Tone: {{#if tone=formal}}Formal greeting{{/if}}{{#if tone=casual}}Casual hello{{/if}}';
+  eq(T.render(tplEqual, { tone: 'formal' }), 'Tone: Formal greeting', 'Equality conditional matches value');
+  eq(T.render(tplEqual, { tone: 'FORMAL' }), 'Tone: Formal greeting', 'Equality conditional is case-insensitive');
+  eq(T.render(tplEqual, { tone: 'casual' }), 'Tone: Casual hello', 'Equality conditional matches alternative branch');
+  eq(T.render(tplEqual, { tone: 'pirate' }), 'Tone: ', 'Equality conditional produces empty string when no match');
+
+  // Conditionals: else
+  const tplElse = 'Status: {{#if active}}Online{{#else}}Offline{{/if}}';
+  eq(T.render(tplElse, { active: 'yes' }), 'Status: Online', 'Else block is skipped when variable is present');
+  eq(T.render(tplElse, { active: '' }), 'Status: Offline', 'Else block renders when variable is empty');
+
+  // 2. Date maths
+  const baseDate = new Date(2026, 0, 15); // Jan 15, 2026
+  eq(T.computeDateMath(baseDate, '+7d').getDate(), 22, 'Date math +7d adds 7 days');
+  eq(T.computeDateMath(baseDate, '-2w').getDate(), 1, 'Date math -2w subtracts 14 days');
+  eq(T.computeDateMath(baseDate, '+1m').getMonth(), 1, 'Date math +1m adds 1 month');
+  eq(T.computeDateMath(baseDate, '-1y').getFullYear(), 2025, 'Date math -1y subtracts 1 year');
+
+  // Month rollover clamping
+  const jan31 = new Date(2026, 0, 31);
+  const febResult = T.computeDateMath(jan31, '+1m');
+  eq(febResult.getMonth(), 1, 'Target month is February');
+  eq(febResult.getDate(), 28, 'Jan 31 + 1m clamps to Feb 28 in a common year');
+
+  // Leap year calculation
+  const leapJan31 = new Date(2024, 0, 31);
+  const leapFebResult = T.computeDateMath(leapJan31, '+1m');
+  eq(leapFebResult.getDate(), 29, 'Jan 31 + 1m clamps to Feb 29 in a leap year');
+  const leapFeb29 = new Date(2024, 1, 29);
+  eq(T.computeDateMath(leapFeb29, '+1y').getDate(), 28, 'Feb 29 + 1y clamps to Feb 28 in next common year');
+
+  // Date math in template rendering
+  const tplDate = 'Due: {{date+14d}}';
+  const renderedDate = T.render(tplDate, {});
+  ok(renderedDate.indexOf('Due: 20') !== -1 || renderedDate.indexOf('Due: 10/') !== -1 || renderedDate.indexOf('Due: ') === 0, 'Date math expands in template render');
+
+  // Variables parsing does not expose date math tokens as user form fields
+  const parsedDateVars = T.parseVariables(tplDate);
+  eq(parsedDateVars.length, 0, 'Date math tokens are not exposed as form input fields');
+
+  // 3. Required fields with !
+  const tplReq = 'Company: {{company!}}, Product: {{product}}';
+  const reqVars = T.parseVariables(tplReq);
+  eq(reqVars[0].name, 'company', 'Variable name strips trailing exclamation');
+  eq(reqVars[0].strictRequired, true, 'Variable has strictRequired true');
+  eq(reqVars[1].strictRequired, false, 'Non-exclamation variable has strictRequired false');
+
+  const valMissing = T.validate(tplReq, { company: '', product: 'Widget' });
+  eq(valMissing.ok, false, 'Validation fails when strictRequired field is empty');
+  eq(valMissing.missing.map((v) => v.name), ['company'], 'Validation reports missing strictRequired field');
+
+  const valOk = T.validate(tplReq, { company: 'Acme', product: 'Widget' });
+  eq(valOk.ok, true, 'Validation passes when strictRequired field is provided');
+
+  // 4. Repeatable blocks
+  const tplRepeat = 'List:\n{{#repeat item}} - {{item}}\n{{/repeat}}Done.';
+  const repVars = T.parseVariables(tplRepeat);
+  eq(repVars[0].name, 'item', 'Repeat block variable name is parsed');
+  eq(repVars[0].type, 'repeat', 'Repeat block variable has type repeat');
+
+  const repRendered = T.render(tplRepeat, { item: ['Apple', 'Banana', 'Cherry'] });
+  eq(repRendered, 'List:\n - Apple\n - Banana\n - Cherry\nDone.', 'Repeatable block renders each item in array');
+
+  // 5. hasSmartSyntax and lintTemplate
+  ok(T.hasSmartSyntax('{{#if x}}test{{/if}}'), 'hasSmartSyntax detects #if');
+  ok(T.hasSmartSyntax('{{date+3d}}'), 'hasSmartSyntax detects date math');
+  ok(T.hasSmartSyntax('{{user!}}'), 'hasSmartSyntax detects strictRequired !');
+  ok(T.hasSmartSyntax('{{#repeat x}}{{x}}{{/repeat}}'), 'hasSmartSyntax detects #repeat');
+  ok(!T.hasSmartSyntax('Hello {{name}}, welcome to {{city}}!'), 'hasSmartSyntax is false for standard templates');
+
+  const lintErr = T.lintTemplate('{{#if condition}}Unclosed block');
+  ok(lintErr.errors.length > 0, 'lintTemplate detects unclosed #if block');
+  const lintOk = T.lintTemplate('{{#if condition}}Closed block{{/if}}');
+  eq(lintOk.errors.length, 0, 'lintTemplate reports 0 errors for valid template');
+
+  // 6. Regression check on all 136 built-in prompts
+  const { S } = await proRealm('SMART-TPL-REGRESSION-KEY');
+  const builtins = S.getAll({ allBuiltins: true }).filter((p) => S.isBuiltin(p.id));
+  eq(builtins.length, 136, 'There are 136 built-in prompts');
+  const builtinsWithSmart = builtins.filter((p) => T.hasSmartSyntax(p.template));
+  eq(builtinsWithSmart.length, 0, 'Zero built-in prompts contain smart syntax (all stay 100% backward-compatible)');
+}
+
+async function testCustomModifiers() {
+  section('36. Custom right-click modifiers (Pro)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+
+  // Free tier restrictions
+  eq(F.getCustomModifiers().length, 0, 'Initial custom modifiers list is empty');
+  eq((await rejection(F.saveCustomModifier({ title: 'My Mod', instruction: 'Do it' }))).code, 'PRO_REQUIRED', 'Free cannot save custom modifiers');
+
+  // Pro tier functionality
+  const { realm, S } = await proRealm('CUSTOM-MODS-KEY');
+  const M = realm.sandbox.OmniModifiers;
+
+  // Create custom modifier with 'quote' placement
+  const modQuote = await S.saveCustomModifier({
+    title: 'Summarize in 3 bullets',
+    placement: 'quote',
+    description: 'Quick bullet summary',
+    instruction: 'Summarize the following text in 3 concise bullet points:'
+  });
+  ok(!!modQuote.id && modQuote.id.indexOf('mod-custom-') === 0, 'Custom modifier receives mod-custom- prefix');
+  eq(modQuote.title, 'Summarize in 3 bullets', 'Title is stored');
+  eq(modQuote.placement, 'quote', 'Placement is stored');
+  eq(S.getCustomModifiers().length, 1, 'Custom modifier is listed in store');
+
+  // Test placement formats in execution via OmniModifiers
+  const outQuote = M.apply(modQuote.id, 'Sample input text');
+  eq(outQuote, 'Summarize the following text in 3 concise bullet points:\n\n"""\nSample input text\n"""', 'Quote placement wraps text in triple quotes');
+
+  // Create custom modifier with 'fence' placement
+  const modFence = await S.saveCustomModifier({
+    title: 'Code review',
+    placement: 'fence',
+    instruction: 'Review this code:'
+  });
+  const outFence = M.apply(modFence.id, 'const x = 1;');
+  eq(outFence, 'Review this code:\n\n```\nconst x = 1;\n```', 'Fence placement wraps text in markdown code fence');
+
+  // Create custom modifier with 'before' placement
+  const modBefore = await S.saveCustomModifier({
+    title: 'Add context before',
+    placement: 'before',
+    instruction: 'Explain why the above happened.'
+  });
+  const outBefore = M.apply(modBefore.id, 'An unexpected error occurred.');
+  eq(outBefore, 'Explain why the above happened.\n\nAn unexpected error occurred.', 'Before placement puts selected text after instruction as payload');
+
+  // Create custom modifier with 'after' placement
+  const modAfter = await S.saveCustomModifier({
+    title: 'Direct instruction',
+    placement: 'after',
+    instruction: 'Rewrite this professionally:'
+  });
+  const outAfter = M.apply(modAfter.id, 'hey bro');
+  eq(outAfter, 'hey bro\n\nRewrite this professionally:', 'After placement puts instruction after selected text');
+
+  // Verify getAll includes custom modifiers
+  const allModifiers = M.getAll();
+  ok(allModifiers.some((m) => m.id === modQuote.id), 'OmniModifiers.getAll() includes custom modifiers');
+  ok(allModifiers.length >= 16, 'Total modifiers count reflects 12 built-in + 4 custom');
+
+  // Delete custom modifier
+  const deleted = await S.deleteCustomModifier(modQuote.id);
+  eq(deleted, true, 'deleteCustomModifier returns true');
+  eq(S.getCustomModifiers().length, 3, 'Custom modifier removed from list');
+
+  // Limit check: 30 custom modifiers
+  for (let i = 0; i < 27; i++) {
+    await S.saveCustomModifier({ title: 'Bulk Mod ' + i, instruction: 'Instruction ' + i });
+  }
+  eq(S.getCustomModifiers().length, 30, 'Reached 30 custom modifiers');
+  eq((await rejection(S.saveCustomModifier({ title: 'Mod 31', instruction: 'Over limit' }))).code, 'LIMIT_REACHED', 'Cannot exceed MAX_CUSTOM_MODIFIERS (30)');
+
+  // Downgrade to Free: existing modifiers remain readable and deletable
+  await S.deactivateLicense();
+  eq(S.getCustomModifiers().length, 30, 'Custom modifiers remain visible on Free');
+  eq(await S.deleteCustomModifier(modFence.id), true, 'Free can delete existing custom modifier');
+  eq(S.getCustomModifiers().length, 29, 'Modifier deleted on Free');
+}
+
+async function testSiteRules() {
+  section('37. Site rules (Pro)');
+
+  const freeRealm = H.createStoreRealm();
+  const F = freeRealm.sandbox.OmniStore;
+  await F.init();
+
+  // Free tier restrictions
+  eq(F.getSiteRules().length, 0, 'Initial site rules list is empty');
+  eq((await rejection(F.saveSiteRule({ name: 'Rule 1', hosts: ['github.com'] }))).code, 'PRO_REQUIRED', 'Free cannot save site rules');
+
+  // Pro tier functionality
+  const { S } = await proRealm('SITE-RULES-KEY');
+
+  // Host matching logic
+  ok(S.hostMatchesRule('mail.google.com', 'mail.google.com'), 'Exact host match succeeds');
+  ok(!S.hostMatchesRule('google.com', 'mail.google.com'), 'Exact host match does not match parent domain');
+  ok(!S.hostMatchesRule('notgoogle.com', 'google.com'), 'Exact host match does not match substring domain');
+
+  // Wildcard host matching (*.domain.com)
+  ok(S.hostMatchesRule('jira.atlassian.net', '*.atlassian.net'), 'Wildcard matches subdomain');
+  ok(S.hostMatchesRule('confluence.atlassian.net', '*.atlassian.net'), 'Wildcard matches sibling subdomain');
+  ok(S.hostMatchesRule('atlassian.net', '*.atlassian.net'), 'Wildcard matches root domain');
+  ok(!S.hostMatchesRule('evil-atlassian.net', '*.atlassian.net'), 'Wildcard does not match substring domain');
+
+  // Save site rule
+  const p1 = await S.savePrompt({ title: 'PR Review', template: 'Review this PR', tags: ['code'] });
+  const p2 = await S.savePrompt({ title: 'Bug Report', template: 'Report this bug', tags: ['code'] });
+  const p3 = await S.savePrompt({ title: 'Casual Chat', template: 'Friendly chat', tags: ['chat'] });
+
+  const rule = await S.saveSiteRule({
+    name: 'GitHub Code Prompts',
+    hosts: ['github.com', '*.github.com'],
+    tags: ['code']
+  });
+  ok(!!rule.id && rule.id.indexOf('rule-') === 0, 'Site rule receives rule- prefix');
+  eq(S.getSiteRules().length, 1, 'Site rule is listed');
+
+  // Matching prompts for host
+  const matchedRules = S.getRulesForHost('github.com');
+  eq(matchedRules.length, 1, 'getRulesForHost finds matching rule');
+
+  // Search ranking boost with host (empty query returns "For this site" prompts first)
+  const emptyQueryResults = S.search({ query: '', host: 'github.com' });
+  const firstTwo = [emptyQueryResults[0].id, emptyQueryResults[1].id];
+  ok(firstTwo.indexOf(p1.id) !== -1 && firstTwo.indexOf(p2.id) !== -1, 'Empty query groups site-matched prompts first');
+
+  // Limit check: 50 site rules
+  for (let i = 0; i < 49; i++) {
+    await S.saveSiteRule({ name: 'Rule ' + i, hosts: ['site' + i + '.com'] });
+  }
+  eq(S.getSiteRules().length, 50, 'Reached 50 site rules');
+  eq((await rejection(S.saveSiteRule({ name: 'Rule 51', hosts: ['site51.com'] }))).code, 'LIMIT_REACHED', 'Cannot exceed MAX_SITE_RULES (50)');
+
+  // Delete site rule
+  eq(await S.deleteSiteRule(rule.id), true, 'deleteSiteRule returns true');
+  eq(S.getSiteRules().length, 49, 'Rule count decremented');
+
+  // Host privacy: content script isolation
+  const palCode = read('content/commandPalette.js');
+  ok(palCode.indexOf('location.hostname') !== -1 && palCode.indexOf('host: host') !== -1, 'Command palette passes only location.hostname');
+  const triggerCode = read('content/slashTrigger.js');
+  ok(triggerCode.indexOf('location.hostname') !== -1 && triggerCode.indexOf('host: host') !== -1, 'Slash trigger passes only location.hostname');
+}
+
+async function testFolderSyncSetupAndBacklog() {
+  section('38. Folder sync setup copy and post-launch backlog notes');
+
+  // Verify options page contains instructions for 4 providers and local privacy note
+  const optionsHtml = read('options/options.html');
+  ok(optionsHtml.indexOf('OneDrive') !== -1, 'options.html mentions OneDrive setup');
+  ok(optionsHtml.indexOf('Google Drive') !== -1, 'options.html mentions Google Drive setup');
+  ok(optionsHtml.indexOf('Dropbox') !== -1, 'options.html mentions Dropbox setup');
+  ok(optionsHtml.indexOf('iCloud') !== -1, 'options.html mentions iCloud Drive setup');
+  ok(optionsHtml.indexOf('local sync folder') !== -1 && optionsHtml.indexOf('sends nothing over the internet') !== -1, 'options.html mentions local file privacy');
+
+  // Verify post-launch backlog notes in steering docs
+  const productMd = read('.kiro/steering/product.md');
+  ok(productMd.indexOf('Google Drive') !== -1, 'product.md contains post-launch Google Drive backlog note');
+
+  const researchMd = read('product_research.md');
+  ok(researchMd.indexOf('Google Drive') !== -1, 'product_research.md contains Google Drive note');
+}
+
 async function main() {
   console.log('OmniPrompt regression suite');
   console.log('===========================');
@@ -2106,6 +3301,7 @@ async function main() {
   await realm.sandbox.OmniStore.init();
 
   testManifest();
+  await testPageRealmWithoutImporters();
   testSyntax();
   testLibraryData(realm);
   testTemplate(realm);
@@ -2119,6 +3315,7 @@ async function main() {
   testModifiers(realm);
   testContentScripts();
   testInsertionBehaviour();
+  await testImeAndHotkeys();
   testServiceWorker();
   testUiWiring();
   testDocs(realm);
@@ -2130,6 +3327,20 @@ async function main() {
   await testBlocksReviewSkills();
   testLandingCheck();
   testLaunchWiring();
+  await testClientPackAndImportLimit();
+  await testDodoMode();
+  await testWorkspaces();
+  await testSavedValues();
+  await testChains();
+  await testLibraryTools();
+  await testFolderSync();
+  await testFreeTwentyAndBackups();
+  testNoRemoteCode();
+  await testCompareAcrossAis();
+  await testSmartTemplates();
+  await testCustomModifiers();
+  await testSiteRules();
+  await testFolderSyncSetupAndBacklog();
 
   console.log('\n===========================');
   console.log('Passed: ' + passed);

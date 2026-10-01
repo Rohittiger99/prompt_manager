@@ -1,10 +1,15 @@
 /**
  * OmniPrompt - Offline sandbox page script
  *
- * Provides the mock composers, the event log, and buttons that call the real
- * extension. It deliberately does not load any of the extension's own scripts:
- * the point is to exercise the code that actually ships, injected the same way
- * it is on a real site.
+ * Provides the mock composers and the event log. It deliberately does not load
+ * any of the extension's own scripts: the point is to exercise the code that
+ * actually ships, injected the same way it is on a real site.
+ *
+ * Content scripts run in an isolated world, so this page script can never see
+ * their globals (OmniStore, CommandPalette and so on). It detects the
+ * extension by the one thing the content script adds to the shared DOM: the
+ * shadow host `#omniprompt-root`. Everything else is driven with the real keys
+ * and the right-click menu, as a user would.
  *
  * Kept in a separate file rather than inline so the page works unchanged if it
  * is ever served from a context with a strict CSP.
@@ -28,33 +33,22 @@
      Is the extension actually here?
      ===================================================================== */
 
+  function extensionPresent() {
+    return !!document.getElementById('omniprompt-root');
+  }
+
   /**
    * Content scripts only run on pages the extension is allowed to touch. Over
    * file:// that needs "Allow access to file URLs" to be switched on, which is
    * the most common reason this page looks dead.
    */
   function reportStatus() {
-    const present = !!window.OmniPrompt && !!window.OmniStore;
-
-    if (present) {
-      const count = window.OmniStore.getAll().length;
-      const settings = window.OmniStore.getSettings();
+    if (extensionPresent()) {
       banner.className = 'status-banner ok';
       banner.innerHTML =
-        '<strong>OmniPrompt is active.</strong> ' +
-        count +
-        ' prompts loaded. Trigger: <code>' +
-        (settings.slashEnabled ? settings.slashTriggerChar : 'disabled') +
-        '</code>. Palette: <code>' +
-        settings.paletteHotkey.display +
-        '</code>. Insert mode: <code>' +
-        settings.insertMode +
-        '</code>.' +
-        (window.OmniPrompt.isDisabledHere()
-          ? ' <br><strong>Note:</strong> this site is on your disabled list, so the menu and palette are off here.'
-          : '');
-      log('Extension detected: ' + count + ' prompts.', 'good');
-      buildModifierToolbar();
+        '<strong>OmniPrompt is active.</strong> Type <code>//</code> in a box below, or press ' +
+        '<code>Alt+K</code> (<code>\u2325K</code> on a Mac). Settings and prompt counts are in the popup.';
+      log('Extension detected.', 'good');
       return;
     }
 
@@ -68,28 +62,6 @@
         : 'Load the extension unpacked at <code>chrome://extensions</code>, then reload this page.') +
       '<br>Either way, reloading the page after enabling it is what makes the content script run.';
     log('Extension not detected. See the banner above.', 'warn');
-  }
-
-  /* =====================================================================
-     Modifier buttons, built from the extension's own list
-     ===================================================================== */
-
-  function buildModifierToolbar() {
-    const holder = document.getElementById('modifier-toolbar');
-    if (!holder || !window.OmniModifiers) return;
-
-    holder.innerHTML = '';
-    window.OmniModifiers.getAll().forEach((mod) => {
-      const btn = document.createElement('button');
-      btn.className = 'btn-outline';
-      btn.textContent = mod.icon + ' ' + (mod.shortTitle || mod.title);
-      btn.title = mod.description;
-      btn.addEventListener('click', () => {
-        window.OmniPrompt.runModifier(mod.id, {});
-        log('Ran modifier: ' + mod.id);
-      });
-      holder.appendChild(btn);
-    });
   }
 
   /* =====================================================================
@@ -117,19 +89,6 @@
     });
   });
 
-  /* =====================================================================
-     Palette button
-     ===================================================================== */
-
-  document.getElementById('btn-manual-palette').addEventListener('click', () => {
-    if (window.OmniPrompt && window.OmniPrompt.openPalette) {
-      window.OmniPrompt.openPalette();
-      log('Opened the palette from the page button.');
-    } else {
-      log('Cannot open the palette: the extension is not on this page.', 'warn');
-    }
-  });
-
   document.getElementById('btn-clear-logs').addEventListener('click', () => {
     logBox.innerHTML = '';
     log('Log cleared.');
@@ -145,7 +104,7 @@
   let attempts = 0;
   const poll = window.setInterval(() => {
     attempts += 1;
-    if (window.OmniPrompt || attempts > 12) {
+    if (extensionPresent() || attempts > 12) {
       window.clearInterval(poll);
       reportStatus();
     }

@@ -1,7 +1,8 @@
 /**
  * OmniPrompt - Options dashboard
  *
- * Library table, prompt editor, folders, settings, backup and import.
+ * Library table, prompt editor, folders, settings, backup and import,
+ * plan and licence, workspaces, chains, folder sync and library tools.
  *
  * Fixes carried in this rewrite
  * -----------------------------
@@ -26,6 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const FAVOURITES = '__favourites__';
 
+  // Shortcut labels use the Mac key symbols on a Mac (Alt+K reads ⌥K). The
+  // stored display string stays "Alt+K".
+  const hotkeyLabel = (hk) => store.formatHotkey(hk, store.isMacPlatform());
+
   let settings = null;
   let filter = { category: 'All' };
   let searchQuery = '';
@@ -39,6 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
     'Ctrl+Shift+Space': { key: ' ', code: 'Space', ctrlKey: true, shiftKey: true, display: 'Ctrl+Shift+Space' }
   };
 
+  // Shown where folder sync cannot work: there is no window.showDirectoryPicker.
+  const UNSUPPORTED_FOLDER_SYNC =
+    'Folder sync needs a browser that lets extensions use a folder, such as Chrome or Edge. ' +
+    'Brave turns this off by default. Export and automatic backups still work.';
+
   /* =====================================================================
      Element handles
      ===================================================================== */
@@ -50,6 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
     sidebarStat: document.getElementById('sidebar-stat'),
     catList: document.getElementById('sidebar-cat-list'),
     addCategory: document.getElementById('btn-add-category'),
+    sidebarToggleBtn: document.getElementById('btn-toggle-sidebar'),
+    sidebarSearchTrigger: document.getElementById('sidebar-search-trigger'),
+    sidebarSectionToggles: document.querySelectorAll('.sidebar-section-toggle'),
 
     search: document.getElementById('options-search'),
     activeFilter: document.getElementById('active-filter'),
@@ -61,13 +74,16 @@ document.addEventListener('DOMContentLoaded', () => {
     builtinNotice: document.getElementById('builtin-notice'),
     fId: document.getElementById('edit-id'),
     fTitle: document.getElementById('edit-title'),
+    editTitleError: document.getElementById('edit-title-error'),
     fCategory: document.getElementById('edit-category'),
     editAddCategory: document.getElementById('btn-edit-add-category'),
     fShortcut: document.getElementById('edit-shortcut'),
+    editShortcutError: document.getElementById('edit-shortcut-error'),
     fTags: document.getElementById('edit-tags'),
     fDescription: document.getElementById('edit-description'),
     fNotes: document.getElementById('edit-notes'),
     fTemplate: document.getElementById('edit-template'),
+    editTemplateError: document.getElementById('edit-template-error'),
     historyBtn: document.getElementById('btn-prompt-history'),
     exportSkillBtn: document.getElementById('btn-export-skill'),
 
@@ -103,7 +119,15 @@ document.addEventListener('DOMContentLoaded', () => {
     syncStatus: document.getElementById('sync-status'),
     disabledSites: document.getElementById('disabled-sites'),
     newDisabledSite: document.getElementById('new-disabled-site'),
+    newDisabledSiteError: document.getElementById('new-disabled-site-error'),
     addDisabledSite: document.getElementById('btn-add-disabled-site'),
+
+    everywhereEnabled: document.getElementById('setting-everywhere-enabled'),
+    everywhereStatus: document.getElementById('everywhere-status'),
+    newEnabledSite: document.getElementById('new-enabled-site'),
+    newEnabledSiteError: document.getElementById('new-enabled-site-error'),
+    btnAddEnabledSite: document.getElementById('btn-add-enabled-site'),
+    enabledSitesList: document.getElementById('enabled-sites-list'),
 
     themeStatus: document.getElementById('theme-status'),
 
@@ -161,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     activateLicenseBtn: document.getElementById('btn-activate-license'),
     deactivateLicenseBtn: document.getElementById('btn-deactivate-license'),
     buyProLink: document.getElementById('link-buy-pro'),
+    buyProLabel: document.getElementById('buy-pro-label'),
     licenseFeedback: document.getElementById('license-feedback'),
 
     upgradeModal: document.getElementById('upgrade-modal'),
@@ -171,8 +196,179 @@ document.addEventListener('DOMContentLoaded', () => {
     upgradeModalActivate: document.getElementById('btn-upgrade-modal-activate'),
     upgradeModalFeedback: document.getElementById('upgrade-modal-feedback'),
     upgradeModalCancel: document.getElementById('btn-upgrade-modal-cancel'),
-    upgradeModalBuy: document.getElementById('link-upgrade-modal-buy')
+    upgradeModalBuy: document.getElementById('link-upgrade-modal-buy'),
+    upgradeModalContent: document.querySelector('#upgrade-modal .upgrade-modal-content'),
+    upgradeModalHeadline: document.getElementById('upgrade-modal-headline'),
+    upgradeModalMeter: document.getElementById('upgrade-modal-meter'),
+    upgradeModalMeterFill: document.getElementById('upgrade-modal-meter-fill'),
+    upgradeModalMeterLabel: document.getElementById('upgrade-modal-meter-label'),
+    upgradeModalProof: document.getElementById('upgrade-modal-proof'),
+    upgradeModalBenefits: document.getElementById('upgrade-modal-benefits'),
+    upgradeModalPrice: document.getElementById('upgrade-modal-price'),
+    upgradeModalKeepFree: document.getElementById('upgrade-modal-keep-free'),
+    upgradeModalKeyBox: document.getElementById('upgrade-modal-key-box'),
+
+    // Pro: library tools
+    folderList: document.getElementById('sidebar-folder-list'),
+    addFolder: document.getElementById('btn-add-folder'),
+    tagList: document.getElementById('sidebar-tag-list'),
+    tidyBtn: document.getElementById('btn-tidy-up'),
+    selectAll: document.getElementById('select-all-rows'),
+    bulkBar: document.getElementById('bulk-bar'),
+    bulkCount: document.getElementById('bulk-count'),
+    bulkFolder: document.getElementById('bulk-folder'),
+    bulkCategory: document.getElementById('bulk-category'),
+    bulkAddTag: document.getElementById('bulk-add-tag'),
+    bulkRemoveTag: document.getElementById('bulk-remove-tag'),
+    bulkFavourite: document.getElementById('bulk-favourite'),
+    bulkDelete: document.getElementById('bulk-delete'),
+    bulkClear: document.getElementById('bulk-clear'),
+    fFolder: document.getElementById('edit-folder'),
+    tidyModal: document.getElementById('tidy-modal'),
+    tidySections: document.getElementById('tidy-sections'),
+    tidyClose: document.getElementById('btn-close-tidy-modal'),
+    tidyCancel: document.getElementById('btn-tidy-cancel'),
+    tidyDelete: document.getElementById('btn-tidy-delete'),
+
+    // Pro: workspaces
+    newWorkspace: document.getElementById('btn-new-workspace'),
+    workspaceList: document.getElementById('workspace-list'),
+    workspaceEditor: document.getElementById('workspace-editor'),
+    workspaceEmpty: document.getElementById('workspace-empty'),
+    wsActiveBanner: document.getElementById('ws-active-banner'),
+    wsActiveName: document.getElementById('ws-active-name'),
+    wsActiveCount: document.getElementById('ws-active-count'),
+    wsDeactivateBanner: document.getElementById('btn-ws-deactivate-banner'),
+    wsFreeNotice: document.getElementById('ws-free-notice'),
+    wsFreeUpgrade: document.getElementById('btn-ws-free-upgrade'),
+    wsId: document.getElementById('ws-id'),
+    wsNameGroup: document.getElementById('ws-name-group'),
+    wsName: document.getElementById('ws-name'),
+    wsNameError: document.getElementById('ws-name-error'),
+    wsFields: document.getElementById('ws-fields'),
+    wsFieldsError: document.getElementById('ws-fields-error'),
+    wsKeySuggestions: document.getElementById('ws-key-suggestions'),
+    wsAddField: document.getElementById('btn-ws-add-field'),
+    wsDelete: document.getElementById('btn-ws-delete'),
+    wsUse: document.getElementById('btn-ws-use'),
+
+    // Pro: chains
+    newChain: document.getElementById('btn-new-chain'),
+    chainList: document.getElementById('chain-list'),
+    chainEditor: document.getElementById('chain-editor'),
+    chainEmpty: document.getElementById('chain-empty'),
+    chainFreeNotice: document.getElementById('chain-free-notice'),
+    chainId: document.getElementById('chain-id'),
+    chainTitle: document.getElementById('chain-title'),
+    chainTitleError: document.getElementById('chain-title-error'),
+    chainShortcut: document.getElementById('chain-shortcut'),
+    chainShortcutNote: document.getElementById('chain-shortcut-note'),
+    chainDescription: document.getElementById('chain-description'),
+    chainStepsCount: document.getElementById('chain-steps-count'),
+    chainStepsError: document.getElementById('chain-steps-error'),
+    chainLiveRegion: document.getElementById('chain-live-region'),
+    chainSteps: document.getElementById('chain-steps'),
+    chainAddStep: document.getElementById('btn-chain-add-step'),
+    chainAddFromPrompt: document.getElementById('chain-add-from-prompt'),
+    chainDelete: document.getElementById('btn-chain-delete'),
+    chainSaveBtn: document.getElementById('btn-chain-save'),
+
+    // Pro: folder sync and remembered answers
+    folderSyncStatus: document.getElementById('folder-sync-status'),
+    folderSyncChoose: document.getElementById('btn-folder-sync-choose'),
+    folderSyncNow: document.getElementById('btn-folder-sync-now'),
+    folderSyncStop: document.getElementById('btn-folder-sync-stop'),
+    forgetRemembered: document.getElementById('btn-forget-remembered'),
+
+    modalTools: document.getElementById('opt-modal-tools'),
+
+    // Custom modifiers (Pro)
+    newModifier: document.getElementById('btn-new-modifier'),
+    modifierList: document.getElementById('modifier-list'),
+    modifierEditor: document.getElementById('modifier-editor'),
+    modifierEmpty: document.getElementById('modifier-empty'),
+    modifierFreeNotice: document.getElementById('modifier-free-notice'),
+    modId: document.getElementById('mod-id'),
+    modTitle: document.getElementById('mod-title'),
+    modTitleError: document.getElementById('mod-title-error'),
+    modPlacement: document.getElementById('mod-placement'),
+    modDesc: document.getElementById('mod-desc'),
+    modInstruction: document.getElementById('mod-instruction'),
+    modInstructionError: document.getElementById('mod-instruction-error'),
+    modDelete: document.getElementById('btn-mod-delete'),
+    modSave: document.getElementById('btn-mod-save'),
+
+    // Site rules (Pro)
+    newRule: document.getElementById('btn-new-rule'),
+    ruleList: document.getElementById('rule-list'),
+    ruleEditor: document.getElementById('rule-editor'),
+    ruleEmpty: document.getElementById('rule-empty'),
+    ruleFreeNotice: document.getElementById('rule-free-notice'),
+    ruleId: document.getElementById('rule-id'),
+    ruleName: document.getElementById('rule-name'),
+    ruleNameError: document.getElementById('rule-name-error'),
+    ruleHosts: document.getElementById('rule-hosts'),
+    ruleHostsError: document.getElementById('rule-hosts-error'),
+    ruleHostPermBanner: document.getElementById('rule-host-perm-banner'),
+    ruleHostPermText: document.getElementById('rule-host-perm-text'),
+    btnRuleGrantHost: document.getElementById('btn-rule-grant-host'),
+    ruleTags: document.getElementById('rule-tags'),
+    ruleFolders: document.getElementById('rule-folders'),
+    ruleDelete: document.getElementById('btn-rule-delete'),
+    ruleSave: document.getElementById('btn-rule-save'),
+    editSiteRules: document.getElementById('edit-site-rules'),
+
+    // Compare across AIs modal
+    compareModal: document.getElementById('options-compare-modal'),
+    compareModalTitle: document.getElementById('opt-compare-title'),
+    compareModalClose: document.getElementById('btn-close-compare-modal'),
+    compareModalTargets: document.getElementById('opt-compare-targets'),
+    compareModalAutosend: document.getElementById('opt-compare-autosend'),
+    compareModalPreview: document.getElementById('opt-compare-preview'),
+    compareModalWarning: document.getElementById('opt-compare-warning'),
+    compareModalCancel: document.getElementById('btn-opt-compare-cancel'),
+    compareModalStart: document.getElementById('btn-opt-compare-start'),
+
+    // Library layout and the read-only preview drawer
+    appLayout: document.getElementById('app-layout'),
+    libraryTitle: document.getElementById('library-title'),
+    viewOpts: document.querySelectorAll('.view-opt'),
+    drawer: document.getElementById('prompt-drawer'),
+    drawerCat: document.getElementById('drawer-cat'),
+    drawerFav: document.getElementById('drawer-fav'),
+    drawerClose: document.getElementById('btn-close-drawer'),
+    drawerTitle: document.getElementById('drawer-title'),
+    drawerDesc: document.getElementById('drawer-desc'),
+    drawerMeta: document.getElementById('drawer-meta'),
+    drawerTemplate: document.getElementById('drawer-template'),
+    drawerFields: document.getElementById('drawer-fields'),
+    drawerNotes: document.getElementById('drawer-notes'),
+    drawerDelete: document.getElementById('drawer-delete'),
+    drawerDuplicate: document.getElementById('drawer-duplicate'),
+    drawerEdit: document.getElementById('drawer-edit'),
+    drawerCopy: document.getElementById('drawer-copy'),
+    drawerCompare: document.getElementById('drawer-compare')
   };
+
+  // Small inline icons for generated markup. One stroke weight (.ico in base.css).
+  const ICONS = {
+    star: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.4 2.8 1-6-4.3-4.2 6-.9z"></path></svg>',
+    edit: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h8.5"></path><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7.2 18.8 3.5 19.7l.9-3.7Z"></path></svg>',
+    copy: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11.5" height="11.5" rx="2.2"></rect><path d="M15 9V5.7A2.2 2.2 0 0 0 12.8 3.5H5.7a2.2 2.2 0 0 0-2.2 2.2v7.1A2.2 2.2 0 0 0 5.7 15H9"></path></svg>',
+    duplicate: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12.5" height="12.5" rx="2.2"></rect><path d="M16 8V5.7a2.2 2.2 0 0 0-2.2-2.2H5.7a2.2 2.2 0 0 0-2.2 2.2v8.1A2.2 2.2 0 0 0 5.7 16H8"></path><path d="M14.2 11.5v5.5M11.5 14.2H17"></path></svg>',
+    trash: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M10 11v6M14 11v6"></path><path d="M5.5 7l1 12a2 2 0 0 0 2 1.8h7a2 2 0 0 0 2-1.8l1-12"></path><path d="M9 7V4.8A1.3 1.3 0 0 1 10.3 3.5h3.4A1.3 1.3 0 0 1 15 4.8V7"></path></svg>',
+    search: '<svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>',
+    starLg: '<svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.4 2.8 1-6-4.3-4.2 6-.9z"></path></svg>',
+    folderLg: '<svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.7l2 2.2h7.3a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"></path></svg>',
+    folder: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.7l2 2.2h7.3a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"></path></svg>',
+    compare: '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="16" rx="1.5"></rect><rect x="14" y="4" width="7" height="16" rx="1.5"></rect></svg>'
+  };
+
+  // The prompt shown in the preview drawer, or '' when it is closed.
+  let drawerId = '';
+
+  // Rows ticked for bulk edit, by prompt id.
+  const selected = new Set();
 
   /* =====================================================================
      Boot
@@ -193,23 +389,42 @@ document.addEventListener('DOMContentLoaded', () => {
     bindTheme();
 
     bindNav();
+    bindSidebarUX();
     bindLibrary();
+    bindLibraryTools();
     bindEditor();
+    bindWorkspaces();
+    bindChains();
+    bindModifiers();
+    bindRules();
+    bindCompareModal();
     bindSettings();
+    bindFolderSync();
     bindDataView();
     bindModals();
+    bindDrawer();
+    bindLayoutToggle();
+    bindPageKeys();
 
+    paintLayout();
     paintSettings();
     renderSidebar();
     renderCategoryOptions();
     renderTable();
     updateCounts();
     paintCheckoutLinks();
+    renderWorkspaces();
+    renderChains();
+    renderModifiers();
+    renderRules();
 
     handleUrlParams();
 
     // Opening the library is a natural moment for the daily backup.
     store.maybeDailySnapshot().then(renderBackups, renderBackups);
+
+    // Pro: pick up changes made on other computers. Quiet if not set up.
+    folderSync({ interactive: false, quiet: true });
 
     store.onChange((reason) => {
       settings = store.getSettings();
@@ -218,10 +433,47 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTable();
       updateCounts();
       renderDisabledSites();
+      renderEverywhereStatus();
+      renderEnabledSites();
       renderSyncStatus();
-      if (reason === 'snapshot' || reason === 'snapshot-restored' || reason === 'imported') renderBackups();
+      renderWorkspaces();
+      renderChains();
+      renderModifiers();
+      renderRules();
+      paintDrawer();
+      paintLayout();
+      if (
+        reason === 'snapshot' ||
+        reason === 'snapshot-restored' ||
+        reason === 'imported' ||
+        reason === 'folder-synced'
+      ) {
+        renderBackups();
+      }
+      if (reason === 'folder-sync-meta' || reason === 'license-changed') renderFolderSyncStatus();
+      if (LOCAL_EDIT_REASONS.indexOf(reason) !== -1) scheduleFolderSync();
     });
   }
+
+  // Changes made on this page that folder sync should write out. Changes
+  // that arrive from elsewhere ('external', 'folder-synced') are left out so
+  // a sync never triggers another sync.
+  const LOCAL_EDIT_REASONS = [
+    'prompt-saved',
+    'prompt-deleted',
+    'imported',
+    'favorites',
+    'folders',
+    'categories',
+    'defaults-restored',
+    'snapshot-restored',
+    'bulk-updated',
+    'workspaces',
+    'chains',
+    'variable-sets',
+    'custom-modifiers',
+    'site-rules'
+  ];
 
   /** Every "buy" link points at the one checkout URL the store defines. */
   function paintCheckoutLinks() {
@@ -229,6 +481,9 @@ document.addEventListener('DOMContentLoaded', () => {
     [el.buyProLink, el.upgradeModalBuy].forEach((link) => {
       if (link) link.href = info.checkoutUrl;
     });
+    if (el.buyProLabel) {
+      el.buyProLabel.textContent = 'Get Pro for ' + info.price + ', once';
+    }
   }
 
   /* =====================================================================
@@ -284,21 +539,149 @@ document.addEventListener('DOMContentLoaded', () => {
         const view = btn.getAttribute('data-view');
         if (!view) return;
         if (view === 'prompts') {
-          filter = { category: 'All', folderId: null };
+          filter = { category: 'All' };
           searchQuery = '';
           el.search.value = '';
           renderSidebar();
           renderTable();
         }
-        if (view === 'editor' && !el.fId.value && !el.fTitle.value) openEditor(null);
         showView(view);
       });
     });
   }
 
+  function bindSidebarUX() {
+    const COLLAPSED_KEY = 'omni.sidebar_collapsed';
+    const SECTIONS_KEY = 'omni.sidebar.collapsed_sections';
+
+    function setSidebarCollapsed(collapsed) {
+      if (!el.appLayout) return;
+      el.appLayout.classList.toggle('sidebar-collapsed', !!collapsed);
+      try {
+        localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+      } catch (_) {}
+      if (el.sidebarToggleBtn) {
+        el.sidebarToggleBtn.setAttribute('title', collapsed ? 'Expand sidebar ([)' : 'Collapse sidebar ([)');
+        el.sidebarToggleBtn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      }
+    }
+
+    try {
+      if (localStorage.getItem(COLLAPSED_KEY) === '1') {
+        setSidebarCollapsed(true);
+      }
+    } catch (_) {}
+
+    if (el.sidebarToggleBtn) {
+      el.sidebarToggleBtn.addEventListener('click', () => {
+        const isCollapsed = el.appLayout && el.appLayout.classList.contains('sidebar-collapsed');
+        setSidebarCollapsed(!isCollapsed);
+      });
+    }
+
+    // Keyboard shortcut '[' to toggle sidebar when not typing in an input
+    document.addEventListener('keydown', (e) => {
+      if (isImeKey(e)) return;
+      if (e.key === '[' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target;
+        const tag = target && target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (target && target.isContentEditable)) return;
+        e.preventDefault();
+        const isCollapsed = el.appLayout && el.appLayout.classList.contains('sidebar-collapsed');
+        setSidebarCollapsed(!isCollapsed);
+      }
+    });
+
+    // Quick search trigger in sidebar
+    if (el.sidebarSearchTrigger) {
+      el.sidebarSearchTrigger.addEventListener('click', () => {
+        showView('prompts');
+        if (el.search) {
+          el.search.focus();
+          el.search.select();
+        }
+      });
+    }
+
+    // Collapsible section headers (Categories, Folders, Tags)
+    let collapsedSections = {};
+    try {
+      collapsedSections = JSON.parse(localStorage.getItem(SECTIONS_KEY) || '{}');
+    } catch (_) {}
+
+    function updateSectionState(sectionId, isCollapsed) {
+      const listMap = {
+        categories: el.catList,
+        folders: el.folderList,
+        tags: el.tagList
+      };
+      const listEl = listMap[sectionId];
+      if (listEl) {
+        listEl.classList.toggle('is-collapsed', isCollapsed);
+      }
+      const btn = document.querySelector('.sidebar-section-toggle[data-section="' + sectionId + '"]');
+      if (btn) {
+        btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      }
+    }
+
+    // Restore stored collapse states
+    Object.keys(collapsedSections).forEach((sectionId) => {
+      if (collapsedSections[sectionId]) {
+        updateSectionState(sectionId, true);
+      }
+    });
+
+    if (el.sidebarSectionToggles) {
+      el.sidebarSectionToggles.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const sectionId = btn.getAttribute('data-section');
+          if (!sectionId) return;
+          collapsedSections[sectionId] = !collapsedSections[sectionId];
+          updateSectionState(sectionId, !!collapsedSections[sectionId]);
+          try {
+            localStorage.setItem(SECTIONS_KEY, JSON.stringify(collapsedSections));
+          } catch (_) {}
+        });
+      });
+    }
+  }
+
   function showView(view) {
-    el.navItems.forEach((b) => b.classList.toggle('active', b.getAttribute('data-view') === view));
+    if (view !== 'editor' && isEditorDirty()) {
+      if (!window.confirm('You have unsaved changes in this prompt. Discard them?')) return;
+      editorInitialSnapshot = null;
+    }
+    if (view !== 'workspaces' && isWorkspaceDirty()) {
+      if (!window.confirm('You have unsaved changes in this workspace. Discard them?')) return;
+      wsInitialSnapshot = null;
+    }
+    if (view !== 'chains' && isChainDirty()) {
+      if (!window.confirm('You have unsaved changes in this chain. Discard them?')) return;
+      chainInitialSnapshot = null;
+    }
+    if (view !== 'modifiers' && isModifierDirty()) {
+      if (!window.confirm('You have unsaved changes in this modifier. Discard them?')) return;
+      modInitialSnapshot = null;
+    }
+    if (view !== 'rules' && isRuleDirty()) {
+      if (!window.confirm('You have unsaved changes in this site rule. Discard them?')) return;
+      ruleInitialSnapshot = null;
+    }
+    // The editor belongs to the library, so the library stays lit while editing.
+    const navView = view === 'editor' ? 'prompts' : view;
+    el.navItems.forEach((b) => {
+      const on = b.getAttribute('data-view') === navView;
+      b.classList.toggle('active', on);
+      if (on) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
     el.panels.forEach((p) => p.classList.toggle('active', p.id === 'view-' + view));
+    if (el.appLayout) el.appLayout.setAttribute('data-view', view);
+    if (view !== 'prompts') closeDrawer();
+    if (view === 'modifiers') renderModifiers();
+    if (view === 'rules') renderRules();
+    if (window.scrollY > 0) window.scrollTo({ top: 0 });
   }
 
   /**
@@ -309,9 +692,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     if (!params.toString()) return;
 
-    if (params.has('upgrade') || params.get('view') === 'settings' || params.has('license')) {
+    if (params.has('upgrade') || params.get('view') === 'plan' || params.has('license')) {
+      showView('plan');
+      // ?upgrade=limit|history|blocks opens the paywall for that reason.
+      if (params.has('upgrade')) openUpgradeModal(params.get('upgrade') || 'pro');
+      return;
+    }
+
+    if (params.get('view') === 'settings') {
       showView('settings');
-      if (params.has('upgrade')) openUpgradeModal('pro');
       return;
     }
 
@@ -321,8 +710,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (params.get('view') === 'data') {
-      showView('data');
+    if (['data', 'workspaces', 'chains', 'modifiers', 'rules'].indexOf(params.get('view')) !== -1) {
+      showView(params.get('view'));
       return;
     }
 
@@ -398,13 +787,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const counts = store.countByCategory();
     const favourites = store.getFavorites().length;
 
+    const noSubFilter = !filter.folderId && !filter.tag;
     let html = '';
-    html += catButton('All', 'All prompts', store.getAll().length, filter.category === 'All');
-    html += catButton(FAVOURITES, '★ Favourites', favourites, filter.category === FAVOURITES);
+    html += catButton(
+      'All',
+      '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>',
+      'All prompts',
+      store.getAll().length,
+      filter.category === 'All' && noSubFilter
+    );
+    html += catButton(FAVOURITES, ICONS.star, 'Favourites', favourites, filter.category === FAVOURITES);
 
     store.BUILTIN_CATEGORIES.forEach((cat) => {
       const meta = store.getCategoryMeta(cat);
-      html += catButton(cat, meta.icon + ' ' + meta.label, counts[cat] || 0, filter.category === cat);
+      html += catButton(cat, escapeHtml(meta.icon), meta.label, counts[cat] || 0, filter.category === cat);
     });
 
     const customCats = store.getCustomCategories();
@@ -413,30 +809,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const count = counts[cat.name] || 0;
         html +=
           '<div class="folder-row">' +
-          '<button class="cat-filter-btn folder-btn' +
+          '<button type="button" class="cat-filter-btn folder-btn' +
           (filter.category === cat.name ? ' active' : '') +
           '" data-cat="' +
           escapeAttr(cat.name) +
           '">' +
+          '<span class="cat-icon" aria-hidden="true">' +
+          escapeHtml(cat.icon || '🏷️') +
+          '</span>' +
           '<span class="cat-label">' +
-          escapeHtml(cat.icon + ' ' + cat.name) +
+          escapeHtml(cat.name) +
           '</span><span class="cat-count">' +
           count +
           '</span>' +
           '</button>' +
-          '<button class="btn-folder-act" data-edit-cat="' +
+          '<button type="button" class="btn-folder-act" data-edit-cat="' +
           escapeAttr(cat.id) +
-          '" title="Edit category">✎</button>' +
-          '<button class="btn-folder-act" data-delete-cat="' +
+          '" title="Edit category" aria-label="Edit category ' +
+          escapeAttr(cat.name) +
+          '">✎</button>' +
+          '<button type="button" class="btn-folder-act" data-delete-cat="' +
           escapeAttr(cat.id) +
-          '" title="Delete category">✕</button>' +
+          '" title="Delete category" aria-label="Delete category ' +
+          escapeAttr(cat.name) +
+          '">✕</button>' +
           '</div>';
       });
     }
 
     const generalCustomCount = store.getAll().filter((p) => p.category === 'Custom').length;
     if (generalCustomCount || !customCats.length) {
-      html += catButton('Custom', '⭐ General Custom', generalCustomCount, filter.category === 'Custom');
+      html += catButton(
+        'Custom',
+        escapeHtml(store.getCategoryMeta('Custom').icon || '⭐'),
+        'Custom',
+        generalCustomCount,
+        filter.category === 'Custom'
+      );
     }
 
     el.catList.innerHTML = html;
@@ -481,15 +890,191 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Category deleted. Prompts kept.');
       });
     });
+
+    renderFolderTree();
+    renderTagCloud();
   }
 
-  function catButton(value, label, count, active) {
+  /* =====================================================================
+     Folders and tags in the sidebar (Pro)
+     ===================================================================== */
+
+  function isPro() {
+    return !!(store.isPro && store.isPro());
+  }
+
+  function countInFolder(folderId) {
+    return store.getAll({ allBuiltins: true }).filter((p) => p.folderId === folderId).length;
+  }
+
+  function renderFolderTree() {
+    if (!el.folderList) return;
+    const tree = store.getFolderTree();
+    const pro = isPro();
+    if (!tree.length) {
+      el.folderList.innerHTML =
+        '<div class="sidebar-empty-note">' +
+        (pro ? 'No folders yet. Folders can sit inside folders.' : 'Folders inside folders are part of Pro.') +
+        '</div>';
+      return;
+    }
+    el.folderList.innerHTML = tree
+      .map(({ folder, depth }) => {
+        const active = filter.folderId === folder.id;
+        return (
+          '<div class="folder-row" style="padding-left:' +
+          depth * 14 +
+          'px">' +
+          '<button type="button" class="cat-filter-btn folder-btn' +
+          (active ? ' active' : '') +
+          '" data-folder="' +
+          escapeAttr(folder.id) +
+          '"><span class="cat-icon" aria-hidden="true">' +
+          ICONS.folder +
+          '</span><span class="cat-label">' +
+          escapeHtml(folder.name) +
+          '</span><span class="cat-count">' +
+          countInFolder(folder.id) +
+          '</span></button>' +
+          '<button type="button" class="btn-folder-act" data-sub-folder="' +
+          escapeAttr(folder.id) +
+          '" title="Add a folder inside" aria-label="Add a folder inside ' +
+          escapeAttr(folder.name) +
+          '">+</button>' +
+          '<button type="button" class="btn-folder-act" data-rename-folder="' +
+          escapeAttr(folder.id) +
+          '" title="Rename folder" aria-label="Rename ' +
+          escapeAttr(folder.name) +
+          '">✎</button>' +
+          '<button type="button" class="btn-folder-act" data-delete-folder="' +
+          escapeAttr(folder.id) +
+          '" title="Delete folder (its prompts are kept)" aria-label="Delete ' +
+          escapeAttr(folder.name) +
+          '">✕</button>' +
+          '</div>'
+        );
+      })
+      .join('');
+
+    el.folderList.querySelectorAll('[data-folder]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        filter = { category: 'All', folderId: btn.getAttribute('data-folder') };
+        renderSidebar();
+        renderTable();
+        showView('prompts');
+      });
+    });
+    el.folderList.querySelectorAll('[data-sub-folder]').forEach((btn) => {
+      btn.addEventListener('click', () => addFolder(btn.getAttribute('data-sub-folder')));
+    });
+    el.folderList.querySelectorAll('[data-rename-folder]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-rename-folder');
+        const folder = store.getFolders().filter((f) => f.id === id)[0];
+        if (!folder) return;
+        const name = await askForText({ title: 'Rename folder', label: 'Folder name', value: folder.name });
+        if (!name) return;
+        try {
+          await store.renameFolder(id, name);
+          showToast('Folder renamed.');
+        } catch (err) {
+          handleProError(err);
+        }
+      });
+    });
+    el.folderList.querySelectorAll('[data-delete-folder]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-delete-folder');
+        const folder = store.getFolders().filter((f) => f.id === id)[0];
+        if (!folder) return;
+        if (!window.confirm('Delete the folder "' + folder.name + '"?\n\nIts prompts and sub-folders move up a level. No prompts are deleted.')) return;
+        await store.deleteFolder(id);
+        if (filter.folderId === id) filter = { category: 'All' };
+        renderSidebar();
+        renderTable();
+        showToast('Folder deleted. Prompts kept.');
+      });
+    });
+  }
+
+  async function addFolder(parentId) {
+    const name = await askForText({
+      title: parentId ? 'New folder inside' : 'New folder',
+      label: 'Folder name',
+      confirm: 'Create'
+    });
+    if (!name) return;
+    try {
+      const folder = await store.createFolder(name, parentId || null);
+      if (!folder) {
+        showToast('A folder with that name is already there.');
+        return;
+      }
+      renderSidebar();
+      renderFolderOptions();
+      showToast('Folder created.');
+    } catch (err) {
+      handleProError(err);
+    }
+  }
+
+  function renderTagCloud() {
+    if (!el.tagList) return;
+    const tags = store.getAllTags().slice(0, 40);
+    if (!tags.length) {
+      el.tagList.innerHTML = '<div class="sidebar-empty-note">Tags you add to prompts show up here.</div>';
+      return;
+    }
+    el.tagList.innerHTML = tags
+      .map(
+        (t) =>
+          '<button type="button" class="tag-chip' +
+          (filter.tag === t.tag ? ' active' : '') +
+          '" data-tag="' +
+          escapeAttr(t.tag) +
+          '" title="' +
+          t.count +
+          ' prompt' +
+          (t.count === 1 ? '' : 's') +
+          '">#' +
+          escapeHtml(t.tag) +
+          '</button>'
+      )
+      .join('');
+    el.tagList.querySelectorAll('[data-tag]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tag = btn.getAttribute('data-tag');
+        filter = filter.tag === tag ? { category: 'All' } : { category: 'All', tag };
+        renderSidebar();
+        renderTable();
+        showView('prompts');
+      });
+    });
+  }
+
+  /** Pro-only actions answer a Free user with the upgrade dialog, nothing else. */
+  function handleProError(err) {
+    if (err && err.code === 'PRO_REQUIRED') {
+      openUpgradeModal(err.feature || 'pro');
+      return true;
+    }
+    showToast((err && err.message) || 'That did not work.');
+    return false;
+  }
+
+  /** A sidebar filter. `iconHtml` is already safe: an escaped emoji or one of ICONS. */
+  function catButton(value, iconHtml, label, count, active) {
     return (
-      '<button class="cat-filter-btn' +
+      '<button type="button" class="cat-filter-btn' +
       (active ? ' active' : '') +
       '" data-cat="' +
       escapeAttr(value) +
-      '">' +
+      '"' +
+      (active ? ' aria-current="true"' : '') +
+      '>' +
+      '<span class="cat-icon" aria-hidden="true">' +
+      iconHtml +
+      '</span>' +
       '<span class="cat-label">' +
       escapeHtml(label) +
       '</span>' +
@@ -516,8 +1101,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     el.catModalId.value = o.id || '';
     el.catModalName.value = o.name || '';
+    el.catModalName.removeAttribute('aria-invalid');
     el.catModalError.textContent = '';
-    el.catModalTitle.textContent = o.id ? 'Edit Category' : 'New Category';
+    el.catModalTitle.textContent = o.id ? 'Edit category' : 'New category';
     el.catModalPreview.textContent = selectedCategoryEmoji;
     el.catModalCustomEmoji.value = '';
 
@@ -593,6 +1179,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target === el.catModal) closeCategoryModal();
     });
 
+    el.catModalName.addEventListener('input', () => {
+      if (el.catModalName.value.trim()) {
+        el.catModalName.removeAttribute('aria-invalid');
+        el.catModalError.textContent = '';
+      }
+    });
+
     el.catModalCustomEmoji.addEventListener('input', () => {
       const val = el.catModalCustomEmoji.value.trim();
       if (val) {
@@ -607,6 +1200,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const name = el.catModalName.value.trim();
       if (!name) {
         el.catModalError.textContent = 'Please enter a category name.';
+        el.catModalName.setAttribute('aria-invalid', 'true');
         el.catModalName.focus();
         return;
       }
@@ -616,6 +1210,8 @@ document.addEventListener('DOMContentLoaded', () => {
         cat = await store.updateCategory(id, { name: name, icon: selectedCategoryEmoji });
         if (!cat) {
           el.catModalError.textContent = 'A category with that name already exists.';
+          el.catModalName.setAttribute('aria-invalid', 'true');
+          el.catModalName.focus();
           return;
         }
         showToast('Category updated.');
@@ -623,11 +1219,14 @@ document.addEventListener('DOMContentLoaded', () => {
         cat = await store.createCategory(name, selectedCategoryEmoji);
         if (!cat) {
           el.catModalError.textContent = 'A category with that name already exists.';
+          el.catModalName.setAttribute('aria-invalid', 'true');
+          el.catModalName.focus();
           return;
         }
         showToast('Category created.');
       }
 
+      el.catModalName.removeAttribute('aria-invalid');
       closeCategoryModal();
       renderSidebar();
       renderCategoryOptions(cat.name);
@@ -671,19 +1270,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return store.search({
       query: searchQuery,
-      category: filter.category
+      category: filter.category,
+      folderId: filter.folderId || undefined,
+      tag: filter.tag || undefined
     });
   }
 
+  let shownIds = [];
+
   function renderTable() {
     const rows = currentRows();
+    shownIds = rows.map((p) => p.id);
     updateFilterChip(rows.length);
 
+    // Ticks only count for prompts that still exist.
+    Array.from(selected).forEach((id) => {
+      if (!store.getById(id)) selected.delete(id);
+    });
+    paintBulkBar();
+
+    el.tableBody.classList.toggle('has-selection', selected.size > 0);
+
     if (!rows.length) {
-      el.tableBody.innerHTML =
-        '<tr><td colspan="5" class="table-empty">' +
-        (searchQuery ? 'Nothing matches that search.' : 'Nothing here yet.') +
-        '</td></tr>';
+      el.tableBody.innerHTML = libraryEmptyHtml();
+      el.tableBody.querySelectorAll('[data-empty-act]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const act = btn.getAttribute('data-empty-act');
+          if (act === 'clear') {
+            searchQuery = '';
+            el.search.value = '';
+            filter = { category: 'All' };
+            renderSidebar();
+            renderTable();
+            el.search.focus();
+          } else if (act === 'create') {
+            el.createBtn.click();
+            if (searchQuery && !el.fTitle.value) el.fTitle.value = searchQuery;
+          } else if (act === 'import') {
+            showView('data');
+          }
+        });
+      });
       return;
     }
 
@@ -715,7 +1342,7 @@ document.addEventListener('DOMContentLoaded', () => {
               varCount +
               ' field' +
               (varCount === 1 ? '' : 's') +
-              ' to fill in">⚡ ' +
+              ' to fill in">' +
               varCount +
               ' field' +
               (varCount === 1 ? '' : 's') +
@@ -724,54 +1351,89 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (p.isCustom) tags.push('<span class="row-chip row-chip-mine">yours</span>');
         if (p.isEdited) tags.push('<span class="row-chip row-chip-edited">edited</span>');
-        if (usage.count) tags.push('<span class="row-chip">used ' + usage.count + '×</span>');
+        if (template.listBlocks(p.template).length) tags.push(blockChip());
+        if (usage.count) tags.push('<span class="row-chip row-chip-usage">used ' + usage.count + '×</span>');
 
+        const isSel = selected.has(p.id);
+        const isOpen = drawerId === p.id;
+        const builtin = store.isBuiltin(p.id);
         return (
-          '<tr data-id="' +
+          '<article class="prompt-tile' +
+          (isSel ? ' is-selected' : '') +
+          (isOpen ? ' is-open' : '') +
+          '" data-id="' +
           escapeAttr(p.id) +
-          '">' +
-          '<td class="cell-fav"><button type="button" class="btn-star-row' +
+          '" role="listitem">' +
+          '<div class="tile-top">' +
+          '<label class="tile-check" title="Select for bulk edit"><input type="checkbox" data-select="1" aria-label="Select ' +
+          escapeAttr(p.title) +
+          '"' +
+          (isSel ? ' checked' : '') +
+          ' /></label>' +
+          '<span class="tile-cat"><span class="tile-cat-icon" aria-hidden="true">' +
+          escapeHtml(catMeta.icon || '🏷️') +
+          '</span><span class="tile-cat-name">' +
+          escapeHtml(p.category || 'Custom') +
+          '</span></span>' +
+          '<button type="button" class="tile-star' +
           (fav ? ' is-fav' : '') +
           '" data-act="fav" title="' +
           (fav ? 'Remove from favourites' : 'Add to favourites') +
-          '" aria-label="Toggle favourite">' +
-          (fav ? '★' : '☆') +
-          '</button></td>' +
-          '<td class="cell-title">' +
-          '<div class="table-title">' +
+          '" aria-label="' +
+          (fav ? 'Remove from favourites' : 'Add to favourites') +
+          '" aria-pressed="' +
+          fav +
+          '">' +
+          ICONS.star +
+          '</button>' +
+          '</div>' +
+          '<h3 class="tile-title"><button type="button" class="tile-open" data-act="open" title="Preview ' +
+          escapeAttr(p.title) +
+          '">' +
           escapeHtml(p.title) +
+          '</button></h3>' +
+          '<p class="tile-desc">' +
+          escapeHtml(p.description || '') +
+          '</p>' +
+          '<div class="tile-preview" aria-hidden="true">' +
+          templatePreviewHtml(p.template, 260) +
           '</div>' +
-          (p.description ? '<div class="table-desc-subtitle">' + escapeHtml(p.description) + '</div>' : '') +
-          (tags.length ? '<div class="row-chips">' + tags.join('') + '</div>' : '') +
-          '</td>' +
-          '<td class="cell-category"><span class="row-category">' +
-          '<span class="row-cat-icon">' +
-          escapeHtml(catMeta.icon || '🏷️') +
-          '</span> ' +
-          '<span class="row-cat-name">' +
-          escapeHtml(p.category || 'Custom') +
-          '</span>' +
-          '</span></td>' +
-          '<td class="cell-template"><div class="table-preview" title="Click row or Edit to customize">' +
-          escapeHtml(p.template) +
-          '</div></td>' +
-          '<td class="cell-actions">' +
-          '<div class="table-actions">' +
-          '<button type="button" class="btn-table btn-table-icon btn-action-edit" data-act="edit" title="Edit prompt" aria-label="Edit prompt">' +
-          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>' +
+          '<div class="tile-foot">' +
+          '<div class="row-chips">' +
+          tags.join('') +
+          '</div>' +
+          '<div class="tile-actions">' +
+          '<button type="button" class="tile-btn" data-act="copy" title="Copy" aria-label="Copy ' +
+          escapeAttr(p.title) +
+          '">' +
+          ICONS.copy +
           '</button>' +
-          '<button type="button" class="btn-table btn-table-icon btn-action-copy" data-act="copy" title="Copy to clipboard" aria-label="Copy to clipboard">' +
-          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+          '<button type="button" class="tile-btn" data-act="compare" title="Compare across AIs" aria-label="Compare ' +
+          escapeAttr(p.title) +
+          '">' +
+          ICONS.compare +
           '</button>' +
-          '<button type="button" class="btn-table btn-table-icon btn-action-duplicate" data-act="duplicate" title="Make a duplicate copy" aria-label="Duplicate prompt">' +
-          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path><line x1="14.5" y1="11.5" x2="14.5" y2="17.5"></line><line x1="11.5" y1="14.5" x2="17.5" y2="14.5"></line></svg>' +
+          '<button type="button" class="tile-btn" data-act="edit" title="Edit" aria-label="Edit ' +
+          escapeAttr(p.title) +
+          '">' +
+          ICONS.edit +
           '</button>' +
-          '<button type="button" class="btn-table btn-table-icon btn-delete-row" data-act="delete" title="Delete prompt" aria-label="Delete prompt">' +
-          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>' +
+          '<button type="button" class="tile-btn" data-act="duplicate" title="Duplicate" aria-label="Duplicate ' +
+          escapeAttr(p.title) +
+          '">' +
+          ICONS.duplicate +
+          '</button>' +
+          '<button type="button" class="tile-btn is-danger" data-act="delete" title="' +
+          (builtin ? 'Hide this built-in' : 'Delete') +
+          '" aria-label="' +
+          (builtin ? 'Hide ' : 'Delete ') +
+          escapeAttr(p.title) +
+          '">' +
+          ICONS.trash +
           '</button>' +
           '</div>' +
-          '</td>' +
-          '</tr>'
+          '</div>' +
+          '</article>'
         );
       })
       .join('');
@@ -779,18 +1441,88 @@ document.addEventListener('DOMContentLoaded', () => {
     bindRows();
   }
 
+  /** The start of a template, escaped, with {{fields}} marked. */
+  function templatePreviewHtml(text, max) {
+    const source = String(text || '');
+    const limit = max || 260;
+    const clipped = source.length > limit ? source.slice(0, limit) + '…' : source;
+    return escapeHtml(clipped).replace(/\{\{[^{}]{1,80}\}\}/g, (m) => '<span class="tpl-mark">' + m + '</span>');
+  }
+
+  /** Empty results say why, and offer the next useful step. */
+  function libraryEmptyHtml() {
+    const filtered = filter.category !== 'All' || filter.folderId || filter.tag;
+    let icon = ICONS.folderLg;
+    let title = 'Nothing here yet';
+    let text = 'This view is empty.';
+    let actions = '';
+    if (searchQuery) {
+      icon = ICONS.search;
+      title = 'No prompt matches “' + (searchQuery.length > 40 ? searchQuery.slice(0, 40) + '…' : searchQuery) + '”';
+      text = 'Search looks at names, shortcuts, tags, notes and the prompt text' + (filtered ? ' inside the current filter.' : '.');
+      actions =
+        '<button type="button" class="btn-secondary" data-empty-act="clear">Clear search' + (filtered ? ' and filter' : '') + '</button>' +
+        '<button type="button" class="btn-primary" data-empty-act="create">Create this prompt</button>';
+    } else if (filter.category === FAVOURITES) {
+      icon = ICONS.starLg;
+      title = 'No favourites yet';
+      text = 'Hover any prompt and press its star. Favourites come first in the slash menu, the palette and the popup.';
+      actions = '<button type="button" class="btn-secondary" data-empty-act="clear">Browse all prompts</button>';
+    } else if (filter.category === 'Custom') {
+      title = 'Your own prompts live here';
+      text = 'Write one from scratch, save a selection from any page with a right-click, or import a file you already have.';
+      actions =
+        '<button type="button" class="btn-secondary" data-empty-act="import">Import a file</button>' +
+        '<button type="button" class="btn-primary" data-empty-act="create">New prompt</button>';
+    } else if (filtered) {
+      text = filter.folderId
+        ? 'Move prompts here with bulk edit, or pick this folder in the editor.'
+        : filter.tag
+        ? 'No prompt has this tag any more.'
+        : 'This category is empty, or its starter pack is switched off in Settings.';
+      actions = '<button type="button" class="btn-secondary" data-empty-act="clear">Show all prompts</button>';
+    }
+    return (
+      '<div class="library-empty">' +
+      '<span class="library-empty-icon">' + icon + '</span>' +
+      '<h3>' + escapeHtml(title) + '</h3>' +
+      '<p>' + escapeHtml(text) + '</p>' +
+      (actions ? '<div class="library-empty-actions">' + actions + '</div>' : '') +
+      '</div>'
+    );
+  }
+
   function bindRows() {
-    el.tableBody.querySelectorAll('tr[data-id]').forEach((tr) => {
+    el.tableBody.querySelectorAll('.prompt-tile[data-id]').forEach((tr) => {
       const id = tr.getAttribute('data-id');
+      const tick = tr.querySelector('[data-select]');
+      if (tick) {
+        tick.addEventListener('change', () => {
+          if (tick.checked) selected.add(id);
+          else selected.delete(id);
+          tr.classList.toggle('is-selected', tick.checked);
+          el.tableBody.classList.toggle('has-selection', selected.size > 0);
+          paintBulkBar();
+        });
+      }
       tr.querySelectorAll('[data-act]').forEach((btn) => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const act = btn.getAttribute('data-act');
 
+          if (act === 'open') {
+            openDrawer(id);
+            return;
+          }
           if (act === 'fav') {
             await store.toggleFavorite(id);
             renderSidebar();
             renderTable();
+            paintDrawer();
+            return;
+          }
+          if (act === 'compare') {
+            openOptionsCompareModal(id);
             return;
           }
           if (act === 'edit') {
@@ -803,27 +1535,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
           if (act === 'duplicate') {
-            if (store.isLimitReached()) {
-              openUpgradeModal('limit');
-              return;
-            }
-            try {
-              const copy = await store.duplicatePrompt(id);
-              renderSidebar();
-              renderTable();
-              updateCounts();
-              if (copy) {
-                openEditor(store.getById(copy.id));
-                showView('editor');
-                showToast('Duplicated. Edit and save.');
-              }
-            } catch (err) {
-              if (err && err.code === 'LIMIT_REACHED') {
-                openUpgradeModal('limit');
-                return;
-              }
-              showToast((err && err.message) || 'Could not duplicate prompt.');
-            }
+            await duplicateAndEdit(id);
             return;
           }
           if (act === 'delete') {
@@ -831,6 +1543,228 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         });
       });
+    });
+  }
+
+  async function duplicateAndEdit(id) {
+    if (store.isLimitReached()) {
+      openUpgradeModal('limit');
+      return;
+    }
+    try {
+      const copy = await store.duplicatePrompt(id);
+      renderSidebar();
+      renderTable();
+      updateCounts();
+      if (copy) {
+        openEditor(store.getById(copy.id));
+        showView('editor');
+        showToast('Duplicated. Edit and save.');
+      }
+    } catch (err) {
+      if (err && err.code === 'LIMIT_REACHED') {
+        openUpgradeModal('limit');
+        return;
+      }
+      showToast((err && err.message) || 'Could not duplicate prompt.');
+    }
+  }
+
+  /* =====================================================================
+     Preview drawer
+     Reading a prompt should not mean opening the editor. The drawer shows
+     the exact text, what the form will ask for, and the actions.
+     ===================================================================== */
+
+  function openDrawer(id) {
+    if (!el.drawer || !store.getById(id)) return;
+    drawerId = id;
+    el.drawer.hidden = false;
+    if (el.appLayout) el.appLayout.classList.add('has-drawer');
+    paintDrawer();
+    el.tableBody.querySelectorAll('.prompt-tile').forEach((t) => {
+      t.classList.toggle('is-open', t.getAttribute('data-id') === id);
+    });
+    if (el.drawerCopy) el.drawerCopy.focus({ preventScroll: true });
+  }
+
+  function closeDrawer() {
+    if (!el.drawer || el.drawer.hidden) return;
+    const was = drawerId;
+    drawerId = '';
+    el.drawer.hidden = true;
+    if (el.appLayout) el.appLayout.classList.remove('has-drawer');
+    el.tableBody.querySelectorAll('.prompt-tile.is-open').forEach((t) => t.classList.remove('is-open'));
+    // Return focus to the card that opened the drawer.
+    const tile = was ? el.tableBody.querySelector('.prompt-tile[data-id="' + cssEscape(was) + '"] .tile-open') : null;
+    if (tile) tile.focus({ preventScroll: true });
+  }
+
+  function paintDrawer() {
+    if (!el.drawer || !drawerId) return;
+    const p = store.getById(drawerId);
+    if (!p) {
+      closeDrawer();
+      return;
+    }
+    const prefix = settings.slashEnabled ? settings.slashTriggerChar : '';
+    const catMeta = store.getCategoryMeta(p.category || 'Custom');
+    const fav = store.isFavorite(p.id);
+    const usage = store.getUsage(p.id);
+    const builtin = store.isBuiltin(p.id);
+
+    el.drawerCat.innerHTML =
+      '<span class="tile-cat-icon" aria-hidden="true">' +
+      escapeHtml(catMeta.icon || '🏷️') +
+      '</span><span>' +
+      escapeHtml(p.category || 'Custom') +
+      (builtin ? ' · built-in' : ' · yours') +
+      '</span>';
+    el.drawerTitle.textContent = p.title;
+    el.drawerDesc.textContent = p.description || '';
+
+    const meta = [];
+    if (p.shortcut && prefix) meta.push('<span class="table-shortcut" title="Type this in any text box">' + escapeHtml(prefix + p.shortcut) + '</span>');
+    (p.tags || []).forEach((t) => meta.push('<span class="row-chip">#' + escapeHtml(t) + '</span>'));
+    if (p.isEdited) meta.push('<span class="row-chip row-chip-edited">edited</span>');
+    meta.push('<span class="row-chip row-chip-usage">' + (usage.count ? 'Used ' + usage.count + '×' : 'Not used yet') + '</span>');
+    el.drawerMeta.innerHTML = meta.join('');
+
+    el.drawerTemplate.innerHTML = templatePreviewHtml(p.template, 20000);
+
+    const vars = template.parseVariables(p.template);
+    el.drawerFields.innerHTML = vars.length
+      ? '<div class="drawer-label">The form asks for</div>' +
+        vars
+          .map((v) => {
+            const kind = v.autofill
+              ? 'fills itself: ' + String(template.AUTOFILL_LABELS[v.autofill] || v.autofill).toLowerCase()
+              : v.type === 'select'
+              ? 'a choice of ' + (v.options || []).length
+              : v.default
+              ? 'starts as “' + v.default + '”'
+              : v.type === 'textarea'
+              ? 'long text'
+              : 'short text';
+            return (
+              '<div class="drawer-field"><strong>' +
+              escapeHtml(v.label) +
+              '</strong><code>' +
+              escapeHtml('{{' + v.name + '}}') +
+              '</code><span class="field-kind">' +
+              escapeHtml(kind) +
+              '</span></div>'
+            );
+          })
+          .join('')
+      : '';
+
+    if (el.drawerNotes) {
+      el.drawerNotes.hidden = !p.notes;
+      el.drawerNotes.textContent = p.notes || '';
+    }
+
+    el.drawerFav.setAttribute('aria-pressed', String(fav));
+    el.drawerFav.title = fav ? 'Remove from favourites' : 'Add to favourites';
+    el.drawerFav.setAttribute('aria-label', el.drawerFav.title);
+    el.drawerDelete.textContent = builtin ? 'Hide' : 'Delete';
+    el.drawerCopy.textContent = vars.length ? 'Fill in and copy' : 'Copy';
+  }
+
+  function bindDrawer() {
+    if (!el.drawer) return;
+    el.drawerClose.addEventListener('click', closeDrawer);
+    el.drawerFav.addEventListener('click', async () => {
+      if (!drawerId) return;
+      await store.toggleFavorite(drawerId);
+      renderSidebar();
+      renderTable();
+      paintDrawer();
+    });
+    el.drawerCopy.addEventListener('click', () => drawerId && copyPrompt(drawerId));
+    el.drawerEdit.addEventListener('click', () => {
+      if (!drawerId) return;
+      openEditor(store.getById(drawerId));
+      showView('editor');
+    });
+    el.drawerDuplicate.addEventListener('click', () => drawerId && duplicateAndEdit(drawerId));
+    if (el.drawerCompare) {
+      el.drawerCompare.addEventListener('click', () => drawerId && openOptionsCompareModal(drawerId));
+    }
+    el.drawerDelete.addEventListener('click', () => drawerId && deletePrompt(drawerId));
+  }
+
+  /* =====================================================================
+     Layout toggle and page keys
+     ===================================================================== */
+
+  function paintLayout() {
+    const layout = settings && settings.libraryLayout === 'list' ? 'list' : 'grid';
+    el.tableBody.classList.toggle('is-grid', layout === 'grid');
+    el.tableBody.classList.toggle('is-list', layout === 'list');
+    el.viewOpts.forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-layout') === layout)));
+  }
+
+  function bindLayoutToggle() {
+    el.viewOpts.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const layout = btn.getAttribute('data-layout') === 'list' ? 'list' : 'grid';
+        // Paint first so the switch feels instant; the choice is saved after.
+        settings.libraryLayout = layout;
+        paintLayout();
+        await saveSetting('libraryLayout', layout);
+      });
+    });
+  }
+
+  function anyDialogOpen() {
+    return Array.from(document.querySelectorAll('.modal-backdrop')).some((m) => m.style.display === 'flex');
+  }
+
+  /** "/" jumps to search, Ctrl+S saves in the editor, Esc closes the drawer. */
+  function bindPageKeys() {
+    document.addEventListener('keydown', (e) => {
+      if (isImeKey(e)) return;
+      // A dialog handler that already used this key (Esc closing a modal) wins.
+      if (e.defaultPrevented || anyDialogOpen()) return;
+      const target = e.target;
+      const typing =
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) {
+        const editor = document.getElementById('view-editor');
+        if (editor && editor.classList.contains('active')) {
+          e.preventDefault();
+          if (typeof el.form.requestSubmit === 'function') el.form.requestSubmit();
+          else el.form.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+        return;
+      }
+
+      if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const library = document.getElementById('view-prompts');
+        if (library && library.classList.contains('active')) {
+          e.preventDefault();
+          el.search.focus();
+          el.search.select();
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (drawerId) {
+          e.preventDefault();
+          closeDrawer();
+          return;
+        }
+        if (target === el.search && el.search.value) {
+          e.preventDefault();
+          el.search.value = '';
+          searchQuery = '';
+          renderTable();
+        }
+      }
     });
   }
 
@@ -864,16 +1798,282 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(builtin ? 'Built-in hidden. Restore any time.' : 'Prompt deleted.');
   }
 
+  /* =====================================================================
+     Bulk edit and tidy-up (Pro)
+     ===================================================================== */
+
+  function bindLibraryTools() {
+    if (el.addFolder) el.addFolder.addEventListener('click', () => addFolder(null));
+
+    if (el.selectAll) {
+      el.selectAll.addEventListener('change', () => {
+        shownIds.forEach((id) => {
+          if (el.selectAll.checked) selected.add(id);
+          else selected.delete(id);
+        });
+        renderTable();
+      });
+    }
+
+    if (el.bulkClear) {
+      el.bulkClear.addEventListener('click', () => {
+        selected.clear();
+        renderTable();
+      });
+    }
+
+    if (el.bulkFolder) {
+      el.bulkFolder.addEventListener('change', async () => {
+        const value = el.bulkFolder.value;
+        el.bulkFolder.value = '';
+        if (!value) return;
+        await runBulk({ folderId: value === '__none__' ? null : value }, 'Moved');
+      });
+    }
+
+    if (el.bulkCategory) {
+      el.bulkCategory.addEventListener('change', async () => {
+        const value = el.bulkCategory.value;
+        el.bulkCategory.value = '';
+        if (!value) return;
+        await runBulk({ category: value }, 'Category set for');
+      });
+    }
+
+    if (el.bulkAddTag) {
+      el.bulkAddTag.addEventListener('click', async () => {
+        const tag = await askForText({ title: 'Add a tag', label: 'Tag', note: 'Separate several tags with commas.', confirm: 'Add' });
+        if (tag) await runBulk({ addTags: tag }, 'Tagged');
+      });
+    }
+
+    if (el.bulkRemoveTag) {
+      el.bulkRemoveTag.addEventListener('click', async () => {
+        const tag = await askForText({ title: 'Remove a tag', label: 'Tag', confirm: 'Remove' });
+        if (tag) await runBulk({ removeTags: tag }, 'Untagged');
+      });
+    }
+
+    if (el.bulkFavourite) {
+      el.bulkFavourite.addEventListener('click', () => runBulk({ favorite: true }, 'Favourited'));
+    }
+
+    if (el.bulkDelete) {
+      el.bulkDelete.addEventListener('click', async () => {
+        const ids = Array.from(selected);
+        const builtins = ids.filter((id) => store.isBuiltin(id)).length;
+        const own = ids.length - builtins;
+        const message =
+          'Delete ' + ids.length + ' prompt' + (ids.length === 1 ? '' : 's') + '?\n\n' +
+          (own ? '• ' + own + ' of your own will be deleted\n' : '') +
+          (builtins ? '• ' + builtins + ' built-in(s) will be hidden\n' : '') +
+          'A backup is taken first, so you can undo this from Backup & import.';
+        if (!window.confirm(message)) return;
+        try {
+          const res = await store.bulkDelete(ids);
+          selected.clear();
+          renderSidebar();
+          renderTable();
+          updateCounts();
+          showToast('Deleted ' + res.deleted + '. A backup was taken first.');
+        } catch (err) {
+          handleProError(err);
+        }
+      });
+    }
+
+    if (el.tidyBtn) el.tidyBtn.addEventListener('click', openTidyModal);
+    if (el.tidyClose) el.tidyClose.addEventListener('click', closeTidyModal);
+    if (el.tidyCancel) el.tidyCancel.addEventListener('click', closeTidyModal);
+    if (el.tidyDelete) el.tidyDelete.addEventListener('click', deleteTicked);
+    if (el.tidyModal) {
+      el.tidyModal.addEventListener('mousedown', (e) => {
+        if (e.target === el.tidyModal) closeTidyModal();
+      });
+    }
+  }
+
+  async function runBulk(changes, verb) {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    try {
+      const res = await store.bulkUpdate(ids, changes);
+      renderSidebar();
+      renderTable();
+      showToast(verb + ' ' + res.updated + ' prompt' + (res.updated === 1 ? '' : 's') + '.');
+    } catch (err) {
+      handleProError(err);
+    }
+  }
+
+  function paintBulkBar() {
+    if (!el.bulkBar) return;
+    const count = selected.size;
+    el.bulkBar.hidden = count === 0;
+    if (el.bulkCount) el.bulkCount.textContent = count + ' selected';
+    if (el.selectAll) {
+      const allShown = shownIds.length > 0 && shownIds.every((id) => selected.has(id));
+      el.selectAll.checked = allShown;
+      el.selectAll.indeterminate = !allShown && shownIds.some((id) => selected.has(id));
+    }
+    if (count) renderBulkOptions();
+  }
+
+  function folderOptionsHtml(selectedId, emptyLabel) {
+    return (
+      '<option value="">' +
+      escapeHtml(emptyLabel) +
+      '</option>' +
+      store
+        .getFolderTree()
+        .map(
+          ({ folder, depth }) =>
+            '<option value="' +
+            escapeAttr(folder.id) +
+            '"' +
+            (folder.id === selectedId ? ' selected' : '') +
+            '>' +
+            '\u00a0\u00a0'.repeat(depth) +
+            '📁 ' +
+            escapeHtml(folder.name) +
+            '</option>'
+        )
+        .join('')
+    );
+  }
+
+  function renderBulkOptions() {
+    if (el.bulkFolder) {
+      el.bulkFolder.innerHTML =
+        folderOptionsHtml('', 'Move to folder…') + '<option value="__none__">No folder</option>';
+    }
+    if (el.bulkCategory) {
+      const cats = store.getCategories();
+      if (cats.indexOf('Custom') === -1) cats.push('Custom');
+      el.bulkCategory.innerHTML =
+        '<option value="">Set category…</option>' +
+        cats
+          .map((c) => '<option value="' + escapeAttr(c) + '">' + escapeHtml(store.getCategoryMeta(c).icon + ' ' + c) + '</option>')
+          .join('');
+    }
+  }
+
+  /** The editor's folder picker. */
+  function renderFolderOptions(selectedId) {
+    if (!el.fFolder) return;
+    el.fFolder.innerHTML = folderOptionsHtml(selectedId || '', 'No folder');
+    el.fFolder.disabled = false;
+    el.fFolder.title = 'Put this prompt in a folder';
+  }
+
+  function openTidyModal() {
+    const s = store.getTidySuggestions();
+    const section = (title, note, list) => {
+      if (!list.length) return '';
+      return (
+        '<div class="tidy-section"><h4>' +
+        escapeHtml(title) +
+        ' <span class="cat-count">' +
+        list.length +
+        '</span></h4><p class="field-note">' +
+        escapeHtml(note) +
+        '</p><ul class="tidy-list">' +
+        list
+          .map(
+            (p) =>
+              '<li><label class="checkbox-row"><input type="checkbox" data-tidy="' +
+              escapeAttr(p.id) +
+              '"' +
+              (p.isCustom ? '' : ' disabled title="Built-ins are kept. Hide them from the library instead."') +
+              ' /><span><strong>' +
+              escapeHtml(p.title) +
+              '</strong>' +
+              (p.isCustom ? '' : ' <em>(built-in)</em>') +
+              '</span></label></li>'
+          )
+          .join('') +
+        '</ul></div>'
+      );
+    };
+
+    let html = '';
+    html += section('Never used', 'Your prompts that have not been inserted or copied since you made them, two weeks or more ago.', s.neverUsed);
+    html += section('Not used for 90 days', 'Your prompts you used before but not lately.', s.stale);
+    s.duplicates.forEach((group, i) => {
+      html += section(
+        'Same text' + (s.duplicates.length > 1 ? ' (' + (i + 1) + ')' : ''),
+        'These prompts have the same template. Keep one.',
+        group
+      );
+    });
+    if (s.emptyFolders.length) {
+      html +=
+        '<div class="tidy-section"><h4>Empty folders <span class="cat-count">' +
+        s.emptyFolders.length +
+        '</span></h4><ul class="tidy-list">' +
+        s.emptyFolders
+          .map(
+            (f) =>
+              '<li><label class="checkbox-row"><input type="checkbox" data-tidy-folder="' +
+              escapeAttr(f.id) +
+              '" /><span>📁 ' +
+              escapeHtml(f.name) +
+              '</span></label></li>'
+          )
+          .join('') +
+        '</ul></div>';
+    }
+    el.tidySections.innerHTML = html || '<p class="history-empty">Nothing to tidy. Your library looks good.</p>';
+    el.tidyModal.style.display = 'flex';
+  }
+
+  function closeTidyModal() {
+    if (el.tidyModal) el.tidyModal.style.display = 'none';
+  }
+
+  async function deleteTicked() {
+    const ids = Array.from(new Set(Array.from(el.tidySections.querySelectorAll('[data-tidy]:checked')).map((c) => c.getAttribute('data-tidy'))));
+    const folderIds = Array.from(el.tidySections.querySelectorAll('[data-tidy-folder]:checked')).map((c) =>
+      c.getAttribute('data-tidy-folder')
+    );
+    if (!ids.length && !folderIds.length) {
+      showToast('Tick something to delete first.');
+      return;
+    }
+    if (!window.confirm('Delete ' + (ids.length + folderIds.length) + ' ticked item(s)? A backup is taken first.')) return;
+    try {
+      const res = ids.length ? await store.bulkDelete(ids) : { deleted: 0 };
+      for (const id of folderIds) await store.deleteFolder(id);
+      closeTidyModal();
+      renderSidebar();
+      renderTable();
+      updateCounts();
+      showToast('Tidied: ' + (res.deleted + folderIds.length) + ' removed. A backup was taken first.');
+    } catch (err) {
+      handleProError(err);
+    }
+  }
+
+  /** The page title names the view; the line under it counts what is shown. */
   function updateFilterChip(count) {
-    const parts = [];
+    let title = 'All prompts';
     if (filter.category === FAVOURITES) {
-      parts.push('★ Favourites');
+      title = 'Favourites';
     } else if (filter.category !== 'All') {
       const meta = store.getCategoryMeta(filter.category);
-      parts.push(meta.icon + ' ' + filter.category);
+      title = (meta.icon ? meta.icon + ' ' : '') + (meta.label || filter.category);
     }
-    if (searchQuery) parts.push('“' + searchQuery + '”');
-    el.activeFilter.textContent = parts.length ? parts.join(' · ') + ' — ' + count : count + ' prompts';
+    if (filter.folderId) {
+      const folder = store.getFolders().filter((f) => f.id === filter.folderId)[0];
+      title = folder ? folder.name : 'Folder';
+    }
+    if (filter.tag) title = '#' + filter.tag;
+    if (el.libraryTitle) el.libraryTitle.textContent = title;
+
+    const noun = count === 1 ? ' prompt' : ' prompts';
+    el.activeFilter.textContent = searchQuery
+      ? count + noun + ' match “' + searchQuery + '”'
+      : count + noun;
   }
 
   function updateCounts() {
@@ -883,13 +2083,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const hidden = store.getBuiltins().length - all.filter((p) => !p.isCustom).length;
 
     el.sidebarCount.textContent = String(all.length);
+    // The plan item says where you are, never more than that.
     if (store.isPro && store.isPro()) {
-      el.sidebarStat.textContent =
-        '👑 Pro · ' + mine + ' custom · ' + store.getFavorites().length + ' favourites';
+      el.sidebarStat.textContent = 'Pro';
+      el.sidebarStat.className = 'nav-status is-pro';
+      el.sidebarStat.title = 'OmniPrompt Pro is active';
     } else {
-      const limit = store.getFreeLimit ? store.getFreeLimit() : 25;
-      el.sidebarStat.textContent =
-        'Free: ' + mine + '/' + limit + ' custom · ' + store.getFavorites().length + ' favourites';
+      const limit = store.getFreeLimit ? store.getFreeLimit() : 20;
+      el.sidebarStat.textContent = 'Free · ' + Math.min(mine, limit) + '/' + limit;
+      el.sidebarStat.className = 'nav-status';
+      el.sidebarStat.title = mine + ' of ' + limit + ' prompts of your own on Free';
     }
 
     paintLicenseState();
@@ -945,20 +2148,88 @@ document.addEventListener('DOMContentLoaded', () => {
       .join('');
   }
 
+  let editorInitialSnapshot = null;
+
+  function getEditorSnapshot() {
+    return JSON.stringify({
+      id: (el.fId && el.fId.value) || '',
+      title: (el.fTitle && el.fTitle.value) || '',
+      category: (el.fCategory && el.fCategory.value) || '',
+      folder: (el.fFolder && el.fFolder.value) || '',
+      shortcut: (el.fShortcut && el.fShortcut.value) || '',
+      tags: (el.fTags && el.fTags.value) || '',
+      description: (el.fDescription && el.fDescription.value) || '',
+      notes: (el.fNotes && el.fNotes.value) || '',
+      template: (el.fTemplate && el.fTemplate.value) || '',
+      siteRules: (el.editSiteRules && el.editSiteRules.value) || ''
+    });
+  }
+
+  function isEditorDirty() {
+    const editor = document.getElementById('view-editor');
+    if (!editor || !editor.classList.contains('active')) return false;
+    if (!editorInitialSnapshot) return false;
+    return getEditorSnapshot() !== editorInitialSnapshot;
+  }
+
+  function clearEditorErrors() {
+    if (el.editTitleError) el.editTitleError.textContent = '';
+    if (el.editTemplateError) el.editTemplateError.textContent = '';
+    if (el.editShortcutError) el.editShortcutError.textContent = '';
+    if (el.fTitle) {
+      el.fTitle.removeAttribute('aria-invalid');
+      const g = el.fTitle.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    }
+    if (el.fTemplate) {
+      el.fTemplate.removeAttribute('aria-invalid');
+      const g = el.fTemplate.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    }
+    if (el.fShortcut) {
+      el.fShortcut.removeAttribute('aria-invalid');
+      const g = el.fShortcut.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    }
+  }
+
   function openEditor(prompt) {
+    if (isEditorDirty()) {
+      if (!window.confirm('You have unsaved changes in this prompt. Discard them?')) return;
+    }
+    clearEditorErrors();
+
     const p = prompt || {};
     const isBuiltin = p.id ? store.isBuiltin(p.id) : false;
 
     el.fId.value = p.id || '';
     el.fTitle.value = p.title || '';
     renderCategoryOptions(p.category);
+    renderFolderOptions(p.folderId || filter.folderId || '');
     el.fShortcut.value = p.shortcut || '';
     el.fTags.value = Array.isArray(p.tags) ? p.tags.join(', ') : p.tags || '';
     el.fDescription.value = p.description || '';
     if (el.fNotes) el.fNotes.value = p.notes || '';
     el.fTemplate.value = p.template || '';
 
-    el.heading.textContent = p.id ? 'Edit: ' + (p.title || 'prompt') : 'New prompt';
+    if (el.editSiteRules) {
+      if (p.id) {
+        const rules = store.getSiteRules().filter(function (r) {
+          return (r.promptIds || []).indexOf(p.id) !== -1;
+        });
+        const allHosts = [];
+        rules.forEach(function (r) {
+          (r.hosts || []).forEach(function (h) {
+            if (allHosts.indexOf(h) === -1) allHosts.push(h);
+          });
+        });
+        el.editSiteRules.value = allHosts.join(', ');
+      } else {
+        el.editSiteRules.value = '';
+      }
+    }
+
+    el.heading.textContent = p.id ? p.title || 'Edit prompt' : 'New prompt';
     el.builtinNotice.style.display = isBuiltin ? 'block' : 'none';
     el.deleteBtn.style.display = p.id ? '' : 'none';
     el.deleteBtn.textContent = isBuiltin ? 'Hide built-in' : 'Delete';
@@ -968,12 +2239,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateShortcutPreview();
     updateVariablePreview();
+    editorInitialSnapshot = getEditorSnapshot();
     el.fTitle.focus();
   }
 
   function bindEditor() {
-    el.fShortcut.addEventListener('input', updateShortcutPreview);
-    el.fTemplate.addEventListener('input', updateVariablePreview);
+    el.fTitle.addEventListener('input', () => {
+      if (el.fTitle.value.trim()) {
+        if (el.editTitleError) el.editTitleError.textContent = '';
+        el.fTitle.removeAttribute('aria-invalid');
+        const g = el.fTitle.closest('.form-group');
+        if (g) g.classList.remove('has-error');
+      }
+    });
+
+    el.fTemplate.addEventListener('input', () => {
+      updateVariablePreview();
+      if (el.fTemplate.value.trim()) {
+        if (el.editTemplateError) el.editTemplateError.textContent = '';
+        el.fTemplate.removeAttribute('aria-invalid');
+        const g = el.fTemplate.closest('.form-group');
+        if (g) g.classList.remove('has-error');
+      }
+    });
+
+    el.fShortcut.addEventListener('input', () => {
+      updateShortcutPreview();
+      if (el.editShortcutError) el.editShortcutError.textContent = '';
+      el.fShortcut.removeAttribute('aria-invalid');
+      const g = el.fShortcut.closest('.form-group');
+      if (g) g.classList.remove('has-error');
+    });
 
     el.editAddCategory.addEventListener('click', () => {
       openCategoryModal({
@@ -983,6 +2279,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    // The block row's "Unlock with Pro" opens the paywall only when clicked,
+    // so writing a prompt is never interrupted.
+    if (el.variablePreview) {
+      el.variablePreview.addEventListener('click', (e) => {
+        const btn = e.target.closest && e.target.closest('[data-upgrade]');
+        if (btn) openUpgradeModal(btn.getAttribute('data-upgrade'));
+      });
+    }
+
     document.querySelectorAll('#options-token-chips .token-chip').forEach((chip) => {
       chip.addEventListener('click', () => {
         insertAtCursor(el.fTemplate, chip.getAttribute('data-insert'));
@@ -991,11 +2296,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     el.cancelEdit.addEventListener('click', () => {
+      if (isEditorDirty()) {
+        if (!window.confirm('Discard unsaved changes to this prompt?')) return;
+      }
+      editorInitialSnapshot = null;
+      clearEditorErrors();
       showView('prompts');
     });
 
     el.form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      clearEditorErrors();
 
       const id = el.fId.value.trim();
       const draft = {
@@ -1008,16 +2319,65 @@ document.addEventListener('DOMContentLoaded', () => {
         template: el.fTemplate.value
       };
       if (id) draft.id = id;
+      if (el.fFolder) draft.folderId = el.fFolder.value || null;
+
+      let hasError = false;
+      let firstErrorEl = null;
+
+      if (!draft.title) {
+        if (el.editTitleError) el.editTitleError.textContent = 'Please enter a prompt title.';
+        el.fTitle.setAttribute('aria-invalid', 'true');
+        const g = el.fTitle.closest('.form-group');
+        if (g) g.classList.add('has-error');
+        hasError = true;
+        if (!firstErrorEl) firstErrorEl = el.fTitle;
+      }
+
+      if (!draft.template.trim()) {
+        if (el.editTemplateError) el.editTemplateError.textContent = 'Please write some prompt text.';
+        el.fTemplate.setAttribute('aria-invalid', 'true');
+        const g = el.fTemplate.closest('.form-group');
+        if (g) g.classList.add('has-error');
+        hasError = true;
+        if (!firstErrorEl) firstErrorEl = el.fTemplate;
+      }
+
+      // Pro check: Smart Templates syntax
+      if (window.OmniTemplate && window.OmniTemplate.hasSmartSyntax && window.OmniTemplate.hasSmartSyntax(draft.template)) {
+        if (!store.isPro()) {
+          openUpgradeModal('smartTemplates');
+          return;
+        }
+        const lint = window.OmniTemplate.lintTemplate(draft.template);
+        if (lint && lint.errors && lint.errors.length) {
+          if (el.editTemplateError) el.editTemplateError.textContent = lint.errors[0];
+          el.fTemplate.setAttribute('aria-invalid', 'true');
+          const g = el.fTemplate.closest('.form-group');
+          if (g) g.classList.add('has-error');
+          el.fTemplate.focus();
+          return;
+        }
+      }
 
       const clash = findShortcutClash(draft.shortcut, id);
       if (clash) {
-        showToast('That shortcut already belongs to "' + clash.title + '". Pick another.');
-        el.fShortcut.focus();
+        if (el.editShortcutError) el.editShortcutError.textContent = 'That shortcut already belongs to "' + clash.title + '". Pick another.';
+        el.fShortcut.setAttribute('aria-invalid', 'true');
+        const g = el.fShortcut.closest('.form-group');
+        if (g) g.classList.add('has-error');
+        hasError = true;
+        if (!firstErrorEl) firstErrorEl = el.fShortcut;
+      }
+
+      if (hasError) {
+        if (firstErrorEl) firstErrorEl.focus();
         return;
       }
 
+      const versionsBefore = id ? store.getHistory(id).length : 0;
+      let savedPrompt = null;
       try {
-        await store.savePrompt(draft);
+        savedPrompt = await store.savePrompt(draft);
       } catch (err) {
         if (err && err.code === 'LIMIT_REACHED') {
           openUpgradeModal('limit');
@@ -1026,14 +2386,53 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast((err && err.message) || 'Could not save prompt.');
         return;
       }
+
+      // Save or update site rules for this prompt if specified
+      if (el.editSiteRules) {
+        const hostVal = el.editSiteRules.value.trim();
+        const targetId = (savedPrompt && savedPrompt.id) || id;
+        if (targetId) {
+          if (hostVal) {
+            if (!store.isPro()) {
+              openUpgradeModal('siteRules');
+            } else {
+              const hosts = hostVal.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+              const existingRule = store.getSiteRules().find(function (r) {
+                return (r.promptIds || []).indexOf(targetId) !== -1;
+              });
+              try {
+                await store.saveSiteRule({
+                  id: existingRule ? existingRule.id : undefined,
+                  name: draft.title + ' (Site Rule)',
+                  hosts: hosts,
+                  promptIds: [targetId]
+                });
+              } catch (e) {
+                console.warn('Failed to save site rule', e);
+              }
+            }
+          } else {
+            const existingRule = store.getSiteRules().find(function (r) {
+              return (r.promptIds || []).indexOf(targetId) !== -1 && (r.promptIds.length === 1);
+            });
+            if (existingRule) {
+              await store.deleteSiteRule(existingRule.id);
+            }
+          }
+        }
+      }
+
+      editorInitialSnapshot = null;
       renderSidebar();
       renderTable();
       updateCounts();
       showView('prompts');
-      showToast(id ? 'Saved.' : 'Prompt created.');
+      const versionKept = !!id && store.getHistory(id).length > versionsBefore;
+      showToast(id ? savedMessage(versionKept) : 'Prompt created.');
     });
 
     el.deleteBtn.addEventListener('click', async () => {
+      editorInitialSnapshot = null;
       const id = el.fId.value.trim();
       if (!id) return;
       await deletePrompt(id);
@@ -1041,6 +2440,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     el.duplicateBtn.addEventListener('click', async () => {
+      editorInitialSnapshot = null;
       const id = el.fId.value.trim();
       if (!id) return;
       if (store.isLimitReached()) {
@@ -1069,6 +2469,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = el.fId.value.trim();
       if (!id) return;
       if (!window.confirm('Discard your changes to this built-in prompt?')) return;
+      editorInitialSnapshot = null;
       // Saving the untouched built-in clears the stored patch.
       const original = store.getBuiltins().filter((b) => b.id === id)[0];
       if (!original) return;
@@ -1114,10 +2515,32 @@ document.addEventListener('DOMContentLoaded', () => {
      Version history
      ===================================================================== */
 
+  // Marks prompts that pull in {{@blocks}}, so Free users know before they
+  // insert one that the blocks stay as written.
+  function blockChip() {
+    return store.isPro()
+      ? '<span class="row-chip row-chip-blocks" title="Uses context blocks">context</span>'
+      : '<span class="row-chip row-chip-blocks" title="Uses context blocks. On Free they are inserted as written; Pro fills them in.">Pro · context</span>';
+  }
+
+  // Free users hear once per visit that the old text was kept. Repeating it on
+  // every save would turn a useful fact into a nag.
+  let toldAboutHistory = false;
+
+  function savedMessage(versionKept) {
+    if (!versionKept) return 'Saved.';
+    if (store.isPro()) return 'Saved. The earlier version is in History.';
+    if (toldAboutHistory) return 'Saved.';
+    toldAboutHistory = true;
+    return 'Saved. The earlier version is kept in History; Pro can restore it.';
+  }
+
   function paintHistoryButton(id) {
     if (!el.historyBtn) return;
+    // Shown for every saved prompt, even with no versions yet, so people
+    // know their edits are being kept before they ever need one back.
     const count = id ? store.getHistory(id).length : 0;
-    el.historyBtn.style.display = count ? '' : 'none';
+    el.historyBtn.style.display = id ? '' : 'none';
     el.historyBtn.textContent = 'History (' + count + ')';
   }
 
@@ -1128,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.historyTitle.textContent = 'Earlier versions of ' + (current ? '“' + current.title + '”' : 'this prompt');
     el.historyNote.textContent = pro
       ? 'Restoring puts that version back and keeps the current text as a new version, so you can undo it.'
-      : 'OmniPrompt keeps these for you. Restoring a version is part of Pro.';
+      : 'OmniPrompt keeps these for you. You can view and copy any version; one-click restore is part of Pro.';
 
     if (!versions.length) {
       el.historyList.innerHTML = '<li class="history-empty">No earlier versions yet. They appear after you edit and save.</li>';
@@ -1136,7 +2559,6 @@ document.addEventListener('DOMContentLoaded', () => {
       el.historyList.innerHTML = versions
         .map((v, idx) => {
           const when = 'Saved ' + new Date(v.at).toLocaleString();
-          const preview = String(v.template || '').replace(/\s+/g, ' ').trim().slice(0, 160);
           return (
             '<li class="history-item">' +
             '<div class="history-meta"><strong>' +
@@ -1144,20 +2566,35 @@ document.addEventListener('DOMContentLoaded', () => {
             '</strong><span>' +
             escapeHtml(when) +
             '</span></div>' +
-            '<div class="history-preview">' +
-            escapeHtml(preview) +
-            (String(v.template || '').length > 160 ? '…' : '') +
+            '<div class="history-preview" style="white-space: pre-wrap; max-height: 120px; overflow-y: auto;">' +
+            escapeHtml(v.template || '') +
             '</div>' +
+            '<div class="history-item-actions" style="margin-top: 8px; display: flex; gap: 8px;">' +
+            '<button type="button" class="btn-secondary btn-mini" data-copy-version="' +
+            idx +
+            '">Copy</button>' +
             '<button type="button" class="btn-secondary btn-mini" data-restore="' +
             idx +
             '">' +
             (pro ? 'Restore' : '🔒 Restore (Pro)') +
             '</button>' +
+            '</div>' +
             '</li>'
           );
         })
         .join('');
     }
+
+    el.historyList.querySelectorAll('[data-copy-version]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const index = parseInt(btn.getAttribute('data-copy-version'), 10);
+        const v = versions[index];
+        if (v && v.template) {
+          const ok = await copyText(v.template);
+          showToast(ok ? 'Version text copied to clipboard.' : 'Could not copy to clipboard.');
+        }
+      });
+    });
 
     el.historyList.querySelectorAll('[data-restore]').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1197,7 +2634,9 @@ document.addEventListener('DOMContentLoaded', () => {
     'before-import': 'Before a replace import',
     'before-restore': 'Before restoring a backup',
     'before-restore-built-ins': 'Before restoring built-ins',
-    'before-update': 'Before an update'
+    'before-update': 'Before an update',
+    'before-bulk-edit': 'Before a bulk edit or delete',
+    'before-sync': 'Before sync removed items deleted elsewhere'
   };
 
   function describeAge(at) {
@@ -1328,7 +2767,9 @@ document.addEventListener('DOMContentLoaded', () => {
         '}}</code>' +
         '<span class="var-label">Context block</span>' +
         state +
-        (pro ? '' : '<span class="var-pro">Pro: left as written on Free</span>') +
+        (pro
+          ? ''
+          : '<button type="button" class="var-pro var-pro-unlock" data-upgrade="blocks" title="Stays as written on Free">Unlock with Pro</button>') +
         '</div>'
       );
     });
@@ -1375,6 +2816,1497 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* =====================================================================
+     Client workspaces (Pro)
+     ===================================================================== */
+
+  let editingWorkspaceId = null;
+
+  function renderWorkspaces() {
+    if (!el.workspaceList) return;
+    const list = store.getWorkspaces();
+    const pro = isPro();
+    const active = store.getActiveWorkspace();
+    const activeId = active ? active.id : '';
+
+    if (el.wsActiveBanner) {
+      if (active) {
+        el.wsActiveBanner.hidden = false;
+        if (el.wsActiveName) el.wsActiveName.textContent = active.name;
+        if (el.wsActiveCount) {
+          el.wsActiveCount.textContent = '· ' + active.fields.length + ' value' + (active.fields.length === 1 ? '' : 's');
+        }
+      } else {
+        el.wsActiveBanner.hidden = true;
+      }
+    }
+
+    el.workspaceList.innerHTML = list
+      .map(
+        (w) => {
+          const previewKeys = (w.fields || [])
+            .slice(0, 3)
+            .map((f) => '<span class="ws-key-chip">' + escapeHtml(f.key) + '</span>')
+            .join('');
+          return (
+            '<li class="item-row' +
+            (w.id === editingWorkspaceId ? ' active' : '') +
+            '"><button type="button" class="item-main" data-ws="' +
+            escapeAttr(w.id) +
+            '"><strong>' +
+            escapeHtml(w.name) +
+            '</strong><span>' +
+            w.fields.length +
+            ' value' +
+            (w.fields.length === 1 ? '' : 's') +
+            '</span>' +
+            (previewKeys ? '<div class="ws-preview-keys">' + previewKeys + '</div>' : '') +
+            '</button>' +
+            (w.id === activeId ? '<span class="item-badge item-badge-active">In use</span>' : '') +
+            '</li>'
+          );
+        }
+      )
+      .join('');
+
+    el.workspaceList.querySelectorAll('[data-ws]').forEach((btn) => {
+      btn.addEventListener('click', () => openWorkspaceEditor(store.getWorkspace(btn.getAttribute('data-ws'))));
+    });
+
+    const editing = !el.workspaceEditor.hidden;
+    el.workspaceEmpty.style.display = editing ? 'none' : '';
+    if (!editing) {
+      el.workspaceEmpty.innerHTML = !pro
+        ? '<p>Client workspaces are part of OmniPrompt Pro. ' +
+          (list.length ? 'Your ' + list.length + ' saved workspace' + (list.length === 1 ? '' : 's') + ' are kept here and in your backups.' : '') +
+          '</p><button type="button" class="btn-secondary" data-upgrade="workspaces">What Pro adds</button>'
+        : list.length
+        ? '<p>Pick a workspace to edit it.' + (activeId ? '' : ' None is in use right now.') + '</p>'
+        : '<p>No workspaces yet. Make one per client, with values such as <code>client_name</code>, <code>tone</code> and <code>client_brief</code>.</p>' +
+          '<button type="button" class="btn-primary btn-mini" id="btn-ws-create-empty">+ Create workspace</button>';
+      const emptyCreate = el.workspaceEmpty.querySelector('#btn-ws-create-empty');
+      if (emptyCreate) {
+        emptyCreate.addEventListener('click', () => openWorkspaceEditor(null));
+      }
+    }
+  }
+
+  function workspaceKeySuggestions() {
+    const names = new Set();
+    store.getAll({ allBuiltins: true }).forEach((p) => {
+      template.parseVariables(p.template).forEach((v) => {
+        if (!v.autofill) names.add(template.normaliseKey(v.name));
+      });
+      template.listBlocks(p.template).forEach((b) => names.add(template.normaliseKey(b)));
+    });
+    return Array.from(names).sort().slice(0, 400);
+  }
+
+  function workspaceFieldRow(field) {
+    return (
+      '<div class="ws-field-row">' +
+      '<input type="text" class="ws-key" list="ws-key-suggestions" maxlength="60" placeholder="client_name" aria-label="Value name" value="' +
+      escapeAttr(field.key || '') +
+      '" />' +
+      '<textarea class="ws-value" rows="2" placeholder="The value" aria-label="Value">' +
+      escapeHtml(field.value || '') +
+      '</textarea>' +
+      '<button type="button" class="btn-table btn-mini" data-remove-field title="Remove this value" aria-label="Remove this value">✕</button>' +
+      '</div>'
+    );
+  }
+
+  function bindWorkspaceFieldRows() {
+    el.wsFields.querySelectorAll('[data-remove-field]').forEach((btn) => {
+      btn.addEventListener('click', () => btn.closest('.ws-field-row').remove());
+    });
+  }
+
+  let wsInitialSnapshot = null;
+
+  function getWorkspaceSnapshot() {
+    return JSON.stringify({
+      id: (el.wsId && el.wsId.value) || '',
+      name: (el.wsName && el.wsName.value) || '',
+      fields: readWorkspaceFields()
+    });
+  }
+
+  function isWorkspaceDirty() {
+    if (!el.workspaceEditor || el.workspaceEditor.hidden) return false;
+    if (!wsInitialSnapshot) return false;
+    return getWorkspaceSnapshot() !== wsInitialSnapshot;
+  }
+
+  function openWorkspaceEditor(ws) {
+    if (!ws && !isPro()) {
+      openUpgradeModal('workspaces');
+      return;
+    }
+    if (isWorkspaceDirty()) {
+      if (!window.confirm('You have unsaved changes in this workspace. Discard them?')) return;
+    }
+    const w = ws || { name: '', fields: [{ key: 'client_name', value: '' }, { key: 'tone', value: '' }, { key: 'client_brief', value: '' }] };
+    editingWorkspaceId = w.id || null;
+    el.wsId.value = w.id || '';
+    el.wsName.value = w.name || '';
+    if (el.wsNameGroup) el.wsNameGroup.classList.remove('has-error');
+    if (el.wsName) el.wsName.removeAttribute('aria-invalid');
+    if (el.wsNameError) el.wsNameError.textContent = '';
+    if (el.wsFieldsError) el.wsFieldsError.textContent = '';
+    if (el.wsFreeNotice) {
+      el.wsFreeNotice.hidden = isPro();
+    }
+    el.wsFields.innerHTML = (w.fields.length ? w.fields : [{ key: '', value: '' }]).map(workspaceFieldRow).join('');
+    bindWorkspaceFieldRows();
+    el.wsKeySuggestions.innerHTML = workspaceKeySuggestions()
+      .map((k) => '<option value="' + escapeAttr(k) + '"></option>')
+      .join('');
+    el.wsDelete.style.display = w.id ? '' : 'none';
+    paintWorkspaceUseButton();
+    el.workspaceEditor.hidden = false;
+    renderWorkspaces();
+    wsInitialSnapshot = getWorkspaceSnapshot();
+    el.wsName.focus();
+  }
+
+  function paintWorkspaceUseButton() {
+    const active = store.getActiveWorkspace();
+    const id = el.wsId.value;
+    el.wsUse.style.display = id ? '' : 'none';
+    el.wsUse.textContent = active && active.id === id ? 'Stop using it' : 'Use this workspace';
+  }
+
+  function readWorkspaceFields() {
+    return Array.from(el.wsFields.querySelectorAll('.ws-field-row'))
+      .map((row) => ({
+        key: row.querySelector('.ws-key').value.trim(),
+        value: row.querySelector('.ws-value').value
+      }))
+      .filter((f) => f.key);
+  }
+
+  function bindWorkspaces() {
+    if (!el.workspaceEditor) return;
+
+    el.newWorkspace.addEventListener('click', () => openWorkspaceEditor(null));
+
+    if (el.wsDeactivateBanner) {
+      el.wsDeactivateBanner.addEventListener('click', async () => {
+        try {
+          await store.setActiveWorkspace('');
+          renderWorkspaces();
+          paintWorkspaceUseButton();
+          showToast('No workspace in use.');
+        } catch (err) {
+          handleProError(err);
+        }
+      });
+    }
+
+    if (el.wsFreeUpgrade) {
+      el.wsFreeUpgrade.addEventListener('click', () => openUpgradeModal('workspaces'));
+    }
+
+    if (el.wsName) {
+      el.wsName.addEventListener('input', () => {
+        if (el.wsName.value.trim()) {
+          if (el.wsNameGroup) el.wsNameGroup.classList.remove('has-error');
+          el.wsName.removeAttribute('aria-invalid');
+          if (el.wsNameError) el.wsNameError.textContent = '';
+        }
+      });
+    }
+
+    el.workspaceEmpty.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('[data-upgrade]');
+      if (btn) openUpgradeModal(btn.getAttribute('data-upgrade'));
+    });
+
+    el.wsAddField.addEventListener('click', () => {
+      el.wsFields.insertAdjacentHTML('beforeend', workspaceFieldRow({ key: '', value: '' }));
+      bindWorkspaceFieldRows();
+      const keys = el.wsFields.querySelectorAll('.ws-key');
+      if (keys.length) keys[keys.length - 1].focus();
+    });
+
+    el.workspaceEditor.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = el.wsName.value.trim();
+      if (!name) {
+        if (el.wsNameGroup) el.wsNameGroup.classList.add('has-error');
+        el.wsName.setAttribute('aria-invalid', 'true');
+        if (el.wsNameError) el.wsNameError.textContent = 'Give the workspace a name.';
+        el.wsName.focus();
+        return;
+      }
+
+      if (!isPro()) {
+        openUpgradeModal('workspaces');
+        return;
+      }
+
+      const existing = el.wsId.value ? store.getWorkspace(el.wsId.value) : null;
+      const clash = store.getWorkspaces().some((w) => {
+        return w.name.toLowerCase() === name.toLowerCase() && (!existing || w.id !== existing.id);
+      });
+      if (clash) {
+        if (el.wsNameGroup) el.wsNameGroup.classList.add('has-error');
+        el.wsName.setAttribute('aria-invalid', 'true');
+        if (el.wsNameError) el.wsNameError.textContent = 'A workspace called "' + name + '" already exists.';
+        el.wsName.focus();
+        return;
+      }
+
+      try {
+        const saved = await store.saveWorkspace({
+          id: el.wsId.value || undefined,
+          name: name,
+          fields: readWorkspaceFields()
+        });
+        editingWorkspaceId = saved.id;
+        el.wsId.value = saved.id;
+        el.wsDelete.style.display = '';
+        paintWorkspaceUseButton();
+        renderWorkspaces();
+        wsInitialSnapshot = getWorkspaceSnapshot();
+        showToast('Workspace saved.');
+      } catch (err) {
+        handleProError(err);
+      }
+    });
+
+    el.wsDelete.addEventListener('click', async () => {
+      const id = el.wsId.value;
+      const ws = store.getWorkspace(id);
+      if (!ws) return;
+      if (!window.confirm('Delete the workspace "' + ws.name + '"?\n\nPrompts are not affected. Daily backups keep a copy.')) return;
+      await store.deleteWorkspace(id);
+      wsInitialSnapshot = null;
+      editingWorkspaceId = null;
+      el.workspaceEditor.hidden = true;
+      renderWorkspaces();
+      showToast('Workspace deleted.');
+    });
+
+    el.wsUse.addEventListener('click', async () => {
+      if (!isPro()) {
+        openUpgradeModal('workspaces');
+        return;
+      }
+      const id = el.wsId.value;
+      const active = store.getActiveWorkspace();
+      const next = active && active.id === id ? '' : id;
+      try {
+        await store.setActiveWorkspace(next);
+        paintWorkspaceUseButton();
+        renderWorkspaces();
+        showToast(next ? 'Workspace in use. Forms and blocks fill from it.' : 'No workspace in use.');
+      } catch (err) {
+        handleProError(err);
+      }
+    });
+  }
+
+
+  /* =====================================================================
+     Stepped chains (Pro)
+     ===================================================================== */
+
+  let editingChainId = null;
+
+  function renderChains() {
+    if (!el.chainList) return;
+    const list = store.getChains();
+    const pro = isPro();
+    const prefix = settings && settings.slashEnabled ? settings.slashTriggerChar : '';
+
+    el.chainList.innerHTML = list
+      .map(
+        (c) =>
+          '<li class="item-row' +
+          (c.id === editingChainId ? ' active' : '') +
+          '"><button type="button" class="item-main" data-chain="' +
+          escapeAttr(c.id) +
+          '"><strong>' +
+          escapeHtml(c.title) +
+          '</strong><span>' +
+          c.steps.length +
+          ' step' +
+          (c.steps.length === 1 ? '' : 's') +
+          (c.shortcut && prefix ? ' · ' + escapeHtml(prefix + c.shortcut) : '') +
+          '</span></button></li>'
+      )
+      .join('');
+
+    el.chainList.querySelectorAll('[data-chain]').forEach((btn) => {
+      btn.addEventListener('click', () => openChainEditor(store.getChain(btn.getAttribute('data-chain'))));
+    });
+
+    const editing = !el.chainEditor.hidden;
+    el.chainEmpty.style.display = editing ? 'none' : '';
+    if (!editing) {
+      el.chainEmpty.innerHTML = !pro
+        ? '<p>Stepped chains are part of OmniPrompt Pro. ' +
+          (list.length ? 'Your saved chains are kept here and in your backups.' : '') +
+          '</p><button type="button" class="btn-secondary" data-upgrade="chains">What Pro adds</button>'
+        : list.length
+        ? '<p>Pick a chain to edit it.</p>'
+        : '<p>No chains yet. Try one for a task you always do in the same order, like research, draft, then review.</p>';
+    }
+  }
+
+  function extractTokensFromText(text) {
+    if (!text) return [];
+    const re = /\{\{([^}]+)\}\}/g;
+    const tokens = [];
+    const seen = {};
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const raw = m[0];
+      if (!seen[raw]) {
+        seen[raw] = true;
+        const inner = m[1].trim();
+        tokens.push({
+          raw: raw,
+          isBlock: inner.charAt(0) === '@'
+        });
+      }
+    }
+    return tokens;
+  }
+
+  function chainStepHtml(step, index, total) {
+    const tokens = extractTokensFromText(step.template || '');
+    const tokensHtml = tokens.length
+      ? tokens.map((t) => '<span class="chain-token-chip' + (t.isBlock ? ' is-block' : '') + '">' + escapeHtml(t.raw) + '</span>').join('')
+      : '<span class="chain-step-tokens-empty" style="color:var(--text-3); font-size:11px;">No fields yet</span>';
+
+    return (
+      '<li class="chain-step" data-step-id="' +
+      escapeAttr(step.id || '') +
+      '" data-step-index="' +
+      index +
+      '">' +
+      '<div class="chain-step-head">' +
+      '<button type="button" class="chain-drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag step ' +
+      (index + 1) +
+      ' to reorder">⋮⋮</button>' +
+      '<span class="chain-step-num">Step ' +
+      (index + 1) +
+      '</span>' +
+      '<input type="text" class="chain-step-title" maxlength="80" placeholder="What this step does" aria-label="Step ' +
+      (index + 1) +
+      ' title" value="' +
+      escapeAttr(step.title || '') +
+      '" />' +
+      '<button type="button" class="btn-table btn-mini" data-move="-1" title="Move up" aria-label="Move step ' +
+      (index + 1) +
+      ' up"' +
+      (index === 0 ? ' disabled' : '') +
+      '>↑</button>' +
+      '<button type="button" class="btn-table btn-mini" data-move="1" title="Move down" aria-label="Move step ' +
+      (index + 1) +
+      ' down"' +
+      (index === total - 1 ? ' disabled' : '') +
+      '>↓</button>' +
+      '<button type="button" class="btn-table btn-mini" data-remove-step title="Remove step ' +
+      (index + 1) +
+      '" aria-label="Remove step ' +
+      (index + 1) +
+      '">✕</button>' +
+      '</div>' +
+      '<textarea class="chain-step-template" rows="5" aria-label="Step ' +
+      (index + 1) +
+      ' text" placeholder="The prompt for this step. {{fields}} work here.">' +
+      escapeHtml(step.template || '') +
+      '</textarea>' +
+      '<div class="chain-step-tokens" aria-label="Detected variables in step ' +
+      (index + 1) +
+      '">' +
+      tokensHtml +
+      '</div>' +
+      '</li>'
+    );
+  }
+
+  function readChainSteps() {
+    return Array.from(el.chainSteps.querySelectorAll('.chain-step')).map((li) => ({
+      id: li.getAttribute('data-step-id') || undefined,
+      title: li.querySelector('.chain-step-title').value,
+      template: li.querySelector('.chain-step-template').value
+    }));
+  }
+
+  let draggedStepIndex = null;
+
+  function renderChainSteps(steps) {
+    if (el.chainStepsCount) {
+      el.chainStepsCount.textContent = steps.length + ' step' + (steps.length === 1 ? '' : 's');
+    }
+    if (el.chainStepsError) {
+      el.chainStepsError.textContent = '';
+      el.chainStepsError.style.display = 'none';
+    }
+
+    el.chainSteps.innerHTML = steps.map((s, i) => chainStepHtml(s, i, steps.length)).join('');
+
+    el.chainSteps.querySelectorAll('.chain-step').forEach((li, i) => {
+      const handle = li.querySelector('.chain-drag-handle');
+      const textarea = li.querySelector('.chain-step-template');
+      const tokensContainer = li.querySelector('.chain-step-tokens');
+
+      // Update tokens on typing
+      textarea.addEventListener('input', () => {
+        const tokens = extractTokensFromText(textarea.value);
+        tokensContainer.innerHTML = tokens.length
+          ? tokens.map((t) => '<span class="chain-token-chip' + (t.isBlock ? ' is-block' : '') + '">' + escapeHtml(t.raw) + '</span>').join('')
+          : '<span class="chain-step-tokens-empty" style="color:var(--text-3); font-size:11px;">No fields yet</span>';
+      });
+
+      // Keyboard move
+      li.querySelectorAll('[data-move]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const all = readChainSteps();
+          const to = i + parseInt(btn.getAttribute('data-move'), 10);
+          if (to < 0 || to >= all.length) return;
+          const moved = all.splice(i, 1)[0];
+          all.splice(to, 0, moved);
+          renderChainSteps(all);
+          if (el.chainLiveRegion) {
+            el.chainLiveRegion.textContent = 'Moved step to position ' + (to + 1) + ' of ' + all.length + '.';
+          }
+          const fresh = el.chainSteps.querySelectorAll('.chain-step');
+          if (fresh[to]) {
+            const focusTarget = fresh[to].querySelector('[data-move="' + btn.getAttribute('data-move') + '"]');
+            if (focusTarget && !focusTarget.disabled) focusTarget.focus();
+          }
+        });
+      });
+
+      // Remove step
+      li.querySelector('[data-remove-step]').addEventListener('click', () => {
+        const all = readChainSteps();
+        all.splice(i, 1);
+        renderChainSteps(all.length ? all : [{ title: '', template: '' }]);
+      });
+
+      // HTML5 Drag and drop
+      if (handle) {
+        handle.addEventListener('dragstart', (e) => {
+          draggedStepIndex = i;
+          li.classList.add('is-dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          try {
+            e.dataTransfer.setData('text/plain', String(i));
+          } catch (err) {}
+        });
+
+        handle.addEventListener('dragend', () => {
+          li.classList.remove('is-dragging');
+          el.chainSteps.querySelectorAll('.chain-step').forEach((s) => {
+            s.classList.remove('drop-target-above', 'drop-target-below');
+          });
+          draggedStepIndex = null;
+        });
+      }
+
+      li.addEventListener('dragover', (e) => {
+        if (draggedStepIndex === null || draggedStepIndex === i) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = li.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        if (e.clientY < mid) {
+          li.classList.add('drop-target-above');
+          li.classList.remove('drop-target-below');
+        } else {
+          li.classList.add('drop-target-below');
+          li.classList.remove('drop-target-above');
+        }
+      });
+
+      li.addEventListener('dragleave', () => {
+        li.classList.remove('drop-target-above', 'drop-target-below');
+      });
+
+      li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        li.classList.remove('drop-target-above', 'drop-target-below');
+        if (draggedStepIndex === null || draggedStepIndex === i) return;
+        const rect = li.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const all = readChainSteps();
+        const item = all.splice(draggedStepIndex, 1)[0];
+        let targetIdx = e.clientY < mid ? i : i + 1;
+        if (draggedStepIndex < targetIdx) targetIdx -= 1;
+        all.splice(targetIdx, 0, item);
+        renderChainSteps(all);
+        if (el.chainLiveRegion) {
+          el.chainLiveRegion.textContent = 'Moved step to position ' + (targetIdx + 1) + ' of ' + all.length + '.';
+        }
+      });
+    });
+  }
+
+  function renderChainPromptPicker() {
+    el.chainAddFromPrompt.innerHTML =
+      '<option value="">Add a step from a prompt…</option>' +
+      store
+        .getAll()
+        .map((p) => '<option value="' + escapeAttr(p.id) + '">' + escapeHtml(p.title) + '</option>')
+        .join('');
+  }
+
+  let chainInitialSnapshot = null;
+
+  function getChainSnapshot() {
+    return JSON.stringify({
+      id: (el.chainId && el.chainId.value) || '',
+      title: (el.chainTitle && el.chainTitle.value) || '',
+      shortcut: (el.chainShortcut && el.chainShortcut.value) || '',
+      description: (el.chainDescription && el.chainDescription.value) || '',
+      steps: readChainSteps()
+    });
+  }
+
+  function isChainDirty() {
+    if (!el.chainEditor || el.chainEditor.hidden) return false;
+    if (!chainInitialSnapshot) return false;
+    return getChainSnapshot() !== chainInitialSnapshot;
+  }
+
+  function openChainEditor(chain) {
+    if (!chain && !isPro()) {
+      openUpgradeModal('chains');
+      return;
+    }
+    if (isChainDirty()) {
+      if (!window.confirm('You have unsaved changes in this chain. Discard them?')) return;
+    }
+    const c = chain || { title: '', shortcut: '', description: '', steps: [{ title: '', template: '' }, { title: '', template: '' }] };
+    editingChainId = c.id || null;
+    el.chainId.value = c.id || '';
+    el.chainTitle.value = c.title || '';
+    el.chainShortcut.value = c.shortcut || '';
+    el.chainDescription.value = c.description || '';
+
+    if (el.chainTitleError) {
+      el.chainTitleError.textContent = '';
+      el.chainTitle.removeAttribute('aria-invalid');
+    }
+    if (el.chainStepsError) {
+      el.chainStepsError.textContent = '';
+      el.chainStepsError.style.display = 'none';
+    }
+
+    if (el.chainFreeNotice) {
+      el.chainFreeNotice.hidden = isPro();
+    }
+    if (el.chainSaveBtn) {
+      el.chainSaveBtn.textContent = isPro() ? 'Save chain' : 'Save chain (Pro)';
+    }
+
+    renderChainSteps(c.steps);
+    renderChainPromptPicker();
+    paintChainShortcutNote();
+    el.chainDelete.style.display = c.id ? '' : 'none';
+    el.chainEditor.hidden = false;
+    renderChains();
+    chainInitialSnapshot = getChainSnapshot();
+    el.chainTitle.focus();
+  }
+
+  function paintChainShortcutNote() {
+    const value = el.chainShortcut.value.trim().toLowerCase().replace(/^\/+/, '');
+    const prefix = settings.slashTriggerChar || '//';
+    if (!value) {
+      el.chainShortcutNote.textContent = 'Optional. Type it in any text box to start the chain.';
+      return;
+    }
+    const promptClash = findShortcutClash(value, null);
+    const chainClash = store.findChainByShortcut(value, el.chainId.value || null);
+    const clash = promptClash || chainClash;
+    el.chainShortcutNote.textContent = clash
+      ? 'Already used by “' + clash.title + '”.'
+      : 'Type ' + prefix + value + ' to start it.';
+  }
+
+  function bindChains() {
+    if (!el.chainEditor) return;
+
+    el.newChain.addEventListener('click', () => openChainEditor(null));
+
+    el.chainEmpty.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('[data-upgrade]');
+      if (btn) openUpgradeModal(btn.getAttribute('data-upgrade'));
+    });
+
+    el.chainShortcut.addEventListener('input', paintChainShortcutNote);
+
+    el.chainTitle.addEventListener('input', () => {
+      if (el.chainTitleError) {
+        el.chainTitleError.textContent = '';
+        el.chainTitle.removeAttribute('aria-invalid');
+      }
+    });
+
+    el.chainAddStep.addEventListener('click', () => {
+      const all = readChainSteps();
+      all.push({ title: '', template: '' });
+      renderChainSteps(all);
+      const areas = el.chainSteps.querySelectorAll('.chain-step-template');
+      if (areas.length) areas[areas.length - 1].focus();
+    });
+
+    el.chainAddFromPrompt.addEventListener('change', () => {
+      const p = store.getById(el.chainAddFromPrompt.value);
+      el.chainAddFromPrompt.value = '';
+      if (!p) return;
+      // Drop an empty last step so picking a prompt fills it instead.
+      const all = readChainSteps().filter((s, i, arr) => s.template.trim() || i !== arr.length - 1);
+      all.push({ title: p.title, template: p.template });
+      renderChainSteps(all);
+    });
+
+    el.chainEditor.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!isPro()) {
+        openUpgradeModal('chains');
+        return;
+      }
+
+      const title = el.chainTitle.value.trim();
+      if (!title) {
+        if (el.chainTitleError) el.chainTitleError.textContent = 'Give the chain a title.';
+        el.chainTitle.setAttribute('aria-invalid', 'true');
+        el.chainTitle.focus();
+        return;
+      }
+
+      const steps = readChainSteps();
+      const validSteps = steps.filter((s) => (s.template && s.template.trim()) || (s.title && s.title.trim()));
+      if (!validSteps.length) {
+        if (el.chainStepsError) {
+          el.chainStepsError.textContent = 'A chain needs at least one step with prompt text.';
+          el.chainStepsError.style.display = 'block';
+        }
+        return;
+      }
+
+      try {
+        const saved = await store.saveChain({
+          id: el.chainId.value || undefined,
+          title: title,
+          shortcut: el.chainShortcut.value,
+          description: el.chainDescription.value,
+          steps: steps
+        });
+        editingChainId = saved.id;
+        el.chainId.value = saved.id;
+        el.chainDelete.style.display = '';
+        renderChainSteps(saved.steps);
+        renderChains();
+        chainInitialSnapshot = getChainSnapshot();
+        showToast('Chain saved with ' + saved.steps.length + ' step' + (saved.steps.length === 1 ? '' : 's') + '.');
+      } catch (err) {
+        handleProError(err);
+      }
+    });
+
+    el.chainDelete.addEventListener('click', async () => {
+      const id = el.chainId.value;
+      const chain = store.getChain(id);
+      if (!chain) return;
+      if (!window.confirm('Delete the chain "' + chain.title + '"?\n\nThe prompts it was built from are not affected.')) return;
+      await store.deleteChain(id);
+      chainInitialSnapshot = null;
+      editingChainId = null;
+      el.chainEditor.hidden = true;
+      renderChains();
+      showToast('Chain deleted.');
+    });
+  }
+
+  /* =====================================================================
+     Custom right-click modifiers (Pro)
+     ===================================================================== */
+
+  let editingModifierId = null;
+  let modInitialSnapshot = null;
+
+  function getModifierSnapshot() {
+    return JSON.stringify({
+      id: (el.modId && el.modId.value) || '',
+      title: (el.modTitle && el.modTitle.value) || '',
+      placement: (el.modPlacement && el.modPlacement.value) || 'quote',
+      desc: (el.modDesc && el.modDesc.value) || '',
+      instruction: (el.modInstruction && el.modInstruction.value) || ''
+    });
+  }
+
+  function isModifierDirty() {
+    if (!el.modifierEditor || el.modifierEditor.hidden) return false;
+    if (!modInitialSnapshot) return false;
+    return getModifierSnapshot() !== modInitialSnapshot;
+  }
+
+  function renderModifiers() {
+    if (!el.modifierList) return;
+    const list = store.getCustomModifiers();
+    const pro = store.isPro();
+
+    el.modifierList.innerHTML = list
+      .map((m) => {
+        const active = m.id === editingModifierId;
+        const sub = (m.description || m.instruction || '').slice(0, 50);
+        return (
+          '<li class="item-row' +
+          (active ? ' is-active' : '') +
+          '"><button type="button" class="item-main" data-mod="' +
+          escapeAttr(m.id) +
+          '"><strong>' +
+          escapeHtml(m.title) +
+          '</strong><span>' +
+          escapeHtml(m.placement || 'quote') +
+          (sub ? ' · ' + escapeHtml(sub) : '') +
+          '</span></button></li>'
+        );
+      })
+      .join('');
+
+    el.modifierList.querySelectorAll('[data-mod]').forEach((btn) => {
+      btn.addEventListener('click', () => openModifierEditor(store.getCustomModifier(btn.getAttribute('data-mod'))));
+    });
+
+    const editing = !el.modifierEditor.hidden;
+    el.modifierEmpty.style.display = editing ? 'none' : '';
+    if (!editing) {
+      el.modifierEmpty.innerHTML = !pro
+        ? '<p>Custom modifiers are part of OmniPrompt Pro. ' +
+          (list.length ? 'Your ' + list.length + ' custom modifier' + (list.length === 1 ? '' : 's') + ' can be viewed and exported here.' : 'Create up to 30 custom right-click actions.') +
+          '</p><button type="button" class="btn-secondary" data-upgrade="customModifiers">What Pro adds</button>'
+        : list.length
+        ? '<p>Pick a modifier to edit it, or create a new one.</p>'
+        : '<p>No custom modifiers yet. Create actions for your browser right-click menu (e.g. summarize, critique, translate).</p>' +
+          '<button type="button" class="btn-primary btn-mini" id="btn-mod-create-empty">+ Create modifier</button>';
+      const emptyBtn = el.modifierEmpty.querySelector('#btn-mod-create-empty');
+      if (emptyBtn) emptyBtn.addEventListener('click', () => openModifierEditor(null));
+      const upgBtn = el.modifierEmpty.querySelector('[data-upgrade]');
+      if (upgBtn) upgBtn.addEventListener('click', () => openUpgradeModal('customModifiers'));
+    }
+  }
+
+  function openModifierEditor(mod) {
+    if (!mod && !store.isPro()) {
+      openUpgradeModal('customModifiers');
+      return;
+    }
+    if (isModifierDirty()) {
+      if (!window.confirm('You have unsaved changes in this modifier. Discard them?')) return;
+    }
+    const m = mod || { title: '', placement: 'quote', description: '', instruction: '' };
+    editingModifierId = m.id || null;
+    el.modId.value = m.id || '';
+    el.modTitle.value = m.title || '';
+    el.modPlacement.value = m.placement || 'quote';
+    el.modDesc.value = m.description || '';
+    el.modInstruction.value = m.instruction || '';
+
+    if (el.modTitleError) el.modTitleError.textContent = '';
+    if (el.modInstructionError) el.modInstructionError.textContent = '';
+    el.modTitle.removeAttribute('aria-invalid');
+    el.modInstruction.removeAttribute('aria-invalid');
+
+    if (el.modifierFreeNotice) {
+      el.modifierFreeNotice.hidden = store.isPro();
+    }
+    el.modDelete.style.display = m.id ? '' : 'none';
+    el.modifierEditor.hidden = false;
+    renderModifiers();
+    modInitialSnapshot = getModifierSnapshot();
+    el.modTitle.focus();
+  }
+
+  function bindModifiers() {
+    if (!el.modifierEditor) return;
+
+    if (el.newModifier) {
+      el.newModifier.addEventListener('click', () => openModifierEditor(null));
+    }
+
+    if (el.modDelete) {
+      el.modDelete.addEventListener('click', async () => {
+        const id = el.modId.value;
+        if (!id) return;
+        if (!window.confirm('Delete this custom modifier?')) return;
+        await store.deleteCustomModifier(id);
+        editingModifierId = null;
+        el.modifierEditor.hidden = true;
+        renderModifiers();
+        showToast('Modifier deleted.');
+      });
+    }
+
+    el.modifierEditor.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!store.isPro()) {
+        openUpgradeModal('customModifiers');
+        return;
+      }
+      const title = el.modTitle.value.trim();
+      if (!title) {
+        if (el.modTitleError) el.modTitleError.textContent = 'Enter a modifier name.';
+        el.modTitle.setAttribute('aria-invalid', 'true');
+        el.modTitle.focus();
+        return;
+      }
+      const instruction = el.modInstruction.value.trim();
+      if (!instruction) {
+        if (el.modInstructionError) el.modInstructionError.textContent = 'Enter instructions for this modifier.';
+        el.modInstruction.setAttribute('aria-invalid', 'true');
+        el.modInstruction.focus();
+        return;
+      }
+
+      try {
+        const saved = await store.saveCustomModifier({
+          id: el.modId.value || undefined,
+          title: title,
+          placement: el.modPlacement.value,
+          description: el.modDesc.value.trim(),
+          instruction: instruction
+        });
+        editingModifierId = saved.id;
+        el.modId.value = saved.id;
+        el.modDelete.style.display = '';
+        renderModifiers();
+        modInitialSnapshot = getModifierSnapshot();
+        showToast('Modifier saved.');
+      } catch (err) {
+        handleProError(err);
+      }
+    });
+  }
+
+  /* =====================================================================
+     Site rules (Pro)
+     ===================================================================== */
+
+  let editingRuleId = null;
+  let ruleInitialSnapshot = null;
+
+  function getRuleSnapshot() {
+    return JSON.stringify({
+      id: (el.ruleId && el.ruleId.value) || '',
+      name: (el.ruleName && el.ruleName.value) || '',
+      hosts: (el.ruleHosts && el.ruleHosts.value) || '',
+      tags: (el.ruleTags && el.ruleTags.value) || '',
+      folder: (el.ruleFolders && el.ruleFolders.value) || ''
+    });
+  }
+
+  function isRuleDirty() {
+    if (!el.ruleEditor || el.ruleEditor.hidden) return false;
+    if (!ruleInitialSnapshot) return false;
+    return getRuleSnapshot() !== ruleInitialSnapshot;
+  }
+
+  function renderRules() {
+    if (!el.ruleList) return;
+    const list = store.getSiteRules();
+    const pro = store.isPro();
+
+    el.ruleList.innerHTML = list
+      .map((r) => {
+        const active = r.id === editingRuleId;
+        const hostsStr = (r.hosts || []).join(', ');
+        return (
+          '<li class="item-row' +
+          (active ? ' is-active' : '') +
+          '"><button type="button" class="item-main" data-rule="' +
+          escapeAttr(r.id) +
+          '"><strong>' +
+          escapeHtml(r.name) +
+          '</strong><span>' +
+          escapeHtml(hostsStr || 'No domains') +
+          '</span></button></li>'
+        );
+      })
+      .join('');
+
+    el.ruleList.querySelectorAll('[data-rule]').forEach((btn) => {
+      btn.addEventListener('click', () => openRuleEditor(store.getSiteRule(btn.getAttribute('data-rule'))));
+    });
+
+    const editing = !el.ruleEditor.hidden;
+    el.ruleEmpty.style.display = editing ? 'none' : '';
+    if (!editing) {
+      el.ruleEmpty.innerHTML = !pro
+        ? '<p>Site rules are part of OmniPrompt Pro. ' +
+          (list.length ? 'Your ' + list.length + ' site rule' + (list.length === 1 ? '' : 's') + ' can be viewed and exported here.' : 'Show relevant prompts first on specific websites.') +
+          '</p><button type="button" class="btn-secondary" data-upgrade="siteRules">What Pro adds</button>'
+        : list.length
+        ? '<p>Pick a rule to edit it, or create a new one.</p>'
+        : '<p>No site rules yet. Pin email prompts on Gmail, code prompts on GitHub, etc.</p>' +
+          '<button type="button" class="btn-primary btn-mini" id="btn-rule-create-empty">+ Create site rule</button>';
+      const emptyBtn = el.ruleEmpty.querySelector('#btn-rule-create-empty');
+      if (emptyBtn) emptyBtn.addEventListener('click', () => openRuleEditor(null));
+      const upgBtn = el.ruleEmpty.querySelector('[data-upgrade]');
+      if (upgBtn) upgBtn.addEventListener('click', () => openUpgradeModal('siteRules'));
+    }
+
+    renderRuleFoldersOptions();
+  }
+
+  function renderRuleFoldersOptions(selectedFolderId) {
+    if (!el.ruleFolders) return;
+    const folders = store.getFolders();
+    el.ruleFolders.innerHTML =
+      '<option value="">(None - all folders)</option>' +
+      folders
+        .map((f) => '<option value="' + escapeAttr(f.id) + '"' + (f.id === selectedFolderId ? ' selected' : '') + '>' + escapeHtml(f.name) + '</option>')
+        .join('');
+  }
+
+  function checkRuleHostPermissions() {
+    if (!el.ruleHostPermBanner || !el.ruleHosts) return;
+    const val = el.ruleHosts.value;
+    const hosts = val.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (!hosts.length) {
+      el.ruleHostPermBanner.style.display = 'none';
+      return;
+    }
+    const currentSettings = store.getSettings();
+    if (currentSettings && currentSettings.runOnAllSites) {
+      el.ruleHostPermBanner.style.display = 'none';
+      return;
+    }
+    let unpermitted = null;
+    for (let i = 0; i < hosts.length; i++) {
+      let h = hosts[i].replace(/^\*\./, '');
+      if (h && !store.isSitePermitted(h)) {
+        unpermitted = h;
+        break;
+      }
+    }
+    if (unpermitted) {
+      if (el.ruleHostPermText) {
+        el.ruleHostPermText.textContent = 'OmniPrompt is not turned on for ' + unpermitted + ' yet.';
+      }
+      el.ruleHostPermBanner.setAttribute('data-host', unpermitted);
+      el.ruleHostPermBanner.style.display = 'flex';
+    } else {
+      el.ruleHostPermBanner.style.display = 'none';
+    }
+  }
+
+  function openRuleEditor(rule) {
+    if (!rule && !store.isPro()) {
+      openUpgradeModal('siteRules');
+      return;
+    }
+    if (isRuleDirty()) {
+      if (!window.confirm('You have unsaved changes in this site rule. Discard them?')) return;
+    }
+    const r = rule || { name: '', hosts: [], tags: [], folders: [] };
+    editingRuleId = r.id || null;
+    el.ruleId.value = r.id || '';
+    el.ruleName.value = r.name || '';
+    el.ruleHosts.value = (r.hosts || []).join(', ');
+    el.ruleTags.value = (r.tags || []).join(', ');
+    renderRuleFoldersOptions((r.folders && r.folders[0]) || '');
+
+    if (el.ruleNameError) el.ruleNameError.textContent = '';
+    if (el.ruleHostsError) el.ruleHostsError.textContent = '';
+    el.ruleName.removeAttribute('aria-invalid');
+    el.ruleHosts.removeAttribute('aria-invalid');
+
+    if (el.ruleFreeNotice) {
+      el.ruleFreeNotice.hidden = store.isPro();
+    }
+    el.ruleDelete.style.display = r.id ? '' : 'none';
+    el.ruleEditor.hidden = false;
+    checkRuleHostPermissions();
+    renderRules();
+    ruleInitialSnapshot = getRuleSnapshot();
+    el.ruleName.focus();
+  }
+
+  function bindRules() {
+    if (!el.ruleEditor) return;
+
+    if (el.newRule) {
+      el.newRule.addEventListener('click', () => openRuleEditor(null));
+    }
+
+    // Presets
+    document.querySelectorAll('.site-rule-presets button[data-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const preset = btn.getAttribute('data-preset');
+        let pName = '';
+        let pHosts = '';
+        if (preset === 'email') {
+          pName = 'Email';
+          pHosts = 'mail.google.com, outlook.live.com, mail.yahoo.com';
+        } else if (preset === 'code') {
+          pName = 'Code';
+          pHosts = 'github.com, gitlab.com, stackoverflow.com';
+        } else if (preset === 'chat') {
+          pName = 'Work chat';
+          pHosts = 'slack.com, discord.com, teams.microsoft.com';
+        } else if (preset === 'docs') {
+          pName = 'Docs';
+          pHosts = 'docs.google.com, notion.so, coda.io';
+        }
+        if (el.ruleEditor.hidden) {
+          openRuleEditor({ name: pName, hosts: pHosts.split(', ') });
+        } else {
+          if (!el.ruleName.value.trim()) el.ruleName.value = pName;
+          el.ruleHosts.value = el.ruleHosts.value ? el.ruleHosts.value + ', ' + pHosts : pHosts;
+          checkRuleHostPermissions();
+        }
+      });
+    });
+
+    if (el.ruleHosts) {
+      el.ruleHosts.addEventListener('input', checkRuleHostPermissions);
+    }
+
+    if (el.btnRuleGrantHost) {
+      el.btnRuleGrantHost.addEventListener('click', async () => {
+        const host = el.ruleHostPermBanner.getAttribute('data-host');
+        if (!host) return;
+        const origin = 'https://' + host + '/*';
+        chrome.permissions.request({ origins: [origin] }, async (granted) => {
+          if (granted) {
+            await store.addEnabledSite(host);
+            checkRuleHostPermissions();
+            showToast('Turned on for ' + host + '.');
+          } else {
+            showToast('Permission not granted.');
+          }
+        });
+      });
+    }
+
+    if (el.ruleDelete) {
+      el.ruleDelete.addEventListener('click', async () => {
+        const id = el.ruleId.value;
+        if (!id) return;
+        if (!window.confirm('Delete this site rule?')) return;
+        await store.deleteSiteRule(id);
+        editingRuleId = null;
+        el.ruleEditor.hidden = true;
+        renderRules();
+        showToast('Site rule deleted.');
+      });
+    }
+
+    el.ruleEditor.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!store.isPro()) {
+        openUpgradeModal('siteRules');
+        return;
+      }
+      const name = el.ruleName.value.trim();
+      if (!name) {
+        if (el.ruleNameError) el.ruleNameError.textContent = 'Enter a rule name.';
+        el.ruleName.setAttribute('aria-invalid', 'true');
+        el.ruleName.focus();
+        return;
+      }
+      const hostsVal = el.ruleHosts.value.trim();
+      const hosts = hostsVal.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+      if (!hosts.length) {
+        if (el.ruleHostsError) el.ruleHostsError.textContent = 'Enter at least one domain.';
+        el.ruleHosts.setAttribute('aria-invalid', 'true');
+        el.ruleHosts.focus();
+        return;
+      }
+      const tags = el.ruleTags.value.split(',').map((s) => s.trim()).filter(Boolean);
+      const folderVal = el.ruleFolders.value;
+      const folders = folderVal ? [folderVal] : [];
+
+      try {
+        const saved = await store.saveSiteRule({
+          id: el.ruleId.value || undefined,
+          name: name,
+          hosts: hosts,
+          tags: tags,
+          folders: folders
+        });
+        editingRuleId = saved.id;
+        el.ruleId.value = saved.id;
+        el.ruleDelete.style.display = '';
+        renderRules();
+        ruleInitialSnapshot = getRuleSnapshot();
+        showToast('Site rule saved.');
+      } catch (err) {
+        handleProError(err);
+      }
+    });
+  }
+
+  /* =====================================================================
+     Compare across AIs modal (Pro)
+     ===================================================================== */
+
+  let compareModalPrompt = null;
+
+  function openOptionsCompareModal(promptId) {
+    if (!store.isPro()) {
+      openUpgradeModal('compare');
+      return;
+    }
+    const p = store.getById(promptId);
+    if (!p) return;
+    compareModalPrompt = p;
+
+    if (el.compareModalTitle) {
+      el.compareModalTitle.textContent = 'Compare: ' + p.title;
+    }
+
+    const allTargets = (window.ChatbotAdapters && window.ChatbotAdapters.COMPARE_TARGETS) ||
+      store.getCompareTargets() || [
+        { id: 'chatgpt', name: 'ChatGPT' },
+        { id: 'claude', name: 'Claude' },
+        { id: 'gemini', name: 'Gemini' },
+        { id: 'copilot', name: 'Copilot' },
+        { id: 'perplexity', name: 'Perplexity' },
+        { id: 'deepseek', name: 'DeepSeek' }
+      ];
+
+    const lastChosen = store.getLastCompareTargets();
+
+    el.compareModalTargets.innerHTML = allTargets
+      .map((t) => {
+        const checked = lastChosen.indexOf(t.id) !== -1;
+        return (
+          '<label class="omni-compare-target-item" style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">' +
+          '<input type="checkbox" value="' +
+          escapeAttr(t.id) +
+          '"' +
+          (checked ? ' checked' : '') +
+          ' />' +
+          '<span>' +
+          escapeHtml(t.name) +
+          '</span>' +
+          '</label>'
+        );
+      })
+      .join('');
+
+    el.compareModalTargets.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+      box.addEventListener('change', () => {
+        const checked = el.compareModalTargets.querySelectorAll('input[type="checkbox"]:checked');
+        if (checked.length > 6) {
+          box.checked = false;
+          showToast('You can compare up to 6 AIs at a time.');
+        }
+      });
+    });
+
+    const vars = template.parseVariables(p.template);
+    let previewText = p.template;
+    if (vars.length) {
+      const defValues = {};
+      vars.forEach((v) => {
+        if (v.default) defValues[v.name] = v.default;
+      });
+      previewText = template.render(p.template, defValues);
+    }
+    if (el.compareModalPreview) {
+      el.compareModalPreview.textContent = previewText;
+    }
+    if (el.compareModalWarning) {
+      el.compareModalWarning.style.display = 'none';
+      el.compareModalWarning.textContent = '';
+    }
+
+    el.compareModal.style.display = 'flex';
+  }
+
+  function closeOptionsCompareModal() {
+    if (el.compareModal) el.compareModal.style.display = 'none';
+    compareModalPrompt = null;
+  }
+
+  function bindCompareModal() {
+    if (!el.compareModal) return;
+
+    if (el.compareModalClose) el.compareModalClose.addEventListener('click', closeOptionsCompareModal);
+    if (el.compareModalCancel) el.compareModalCancel.addEventListener('click', closeOptionsCompareModal);
+    el.compareModal.addEventListener('mousedown', (e) => {
+      if (e.target === el.compareModal) closeOptionsCompareModal();
+    });
+
+    if (el.compareModalStart) {
+      el.compareModalStart.addEventListener('click', async () => {
+        if (!compareModalPrompt) return;
+        const checkedBoxes = Array.from(el.compareModalTargets.querySelectorAll('input[type="checkbox"]:checked'));
+        const targets = checkedBoxes.map((b) => b.value);
+        if (!targets.length) {
+          if (el.compareModalWarning) {
+            el.compareModalWarning.textContent = 'Please select at least one AI target.';
+            el.compareModalWarning.style.display = 'block';
+          }
+          return;
+        }
+
+        const layoutRadio = document.querySelector('input[name="opt-compare-layout"]:checked');
+        const layout = layoutRadio ? layoutRadio.value : 'window';
+        const autoSend = el.compareModalAutosend ? el.compareModalAutosend.checked : false;
+
+        store.setLastCompareTargets(targets);
+
+        const promptText = el.compareModalPreview ? el.compareModalPreview.textContent : compareModalPrompt.template;
+
+        el.compareModalStart.disabled = true;
+        el.compareModalStart.textContent = 'Starting…';
+
+        chrome.runtime.sendMessage(
+          {
+            action: 'start_compare',
+            text: promptText,
+            targets: targets,
+            layout: layout,
+            autoSend: autoSend
+          },
+          (res) => {
+            el.compareModalStart.disabled = false;
+            el.compareModalStart.textContent = 'Start comparison';
+            if (res && res.ok) {
+              closeOptionsCompareModal();
+              showToast('Comparison opened across ' + targets.length + ' AIs.');
+            } else {
+              if (el.compareModalWarning) {
+                el.compareModalWarning.textContent = (res && res.error) || 'Failed to start comparison.';
+                el.compareModalWarning.style.display = 'block';
+              }
+            }
+          }
+        );
+      });
+    }
+  }
+
+  /* =====================================================================
+     Folder sync (Pro)
+     ===================================================================== */
+
+  // The chosen folder is a FileSystemDirectoryHandle. chrome.storage cannot
+  // hold one, so it lives in this page's IndexedDB. Only the handle is kept
+  // there; the library itself goes through OmniStore as everywhere else.
+  const FS_DB = 'omniprompt-folder-sync';
+  const FS_STORE = 'handles';
+  const FS_KEY = 'library-folder';
+
+  function withHandleStore(mode, action) {
+    return new Promise((resolve) => {
+      let req;
+      try {
+        req = indexedDB.open(FS_DB, 1);
+      } catch (e) {
+        resolve(null);
+        return;
+      }
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(FS_STORE);
+      };
+      req.onerror = () => resolve(null);
+      req.onsuccess = () => {
+        const db = req.result;
+        try {
+          const tx = db.transaction(FS_STORE, mode);
+          const request = action(tx.objectStore(FS_STORE));
+          tx.oncomplete = () => {
+            db.close();
+            resolve(request && 'result' in request ? request.result : true);
+          };
+          tx.onerror = () => {
+            db.close();
+            resolve(null);
+          };
+        } catch (e) {
+          db.close();
+          resolve(null);
+        }
+      };
+    });
+  }
+
+  const loadSyncFolder = () => withHandleStore('readonly', (os) => os.get(FS_KEY));
+  const saveSyncFolder = (handle) => withHandleStore('readwrite', (os) => os.put(handle, FS_KEY));
+  const forgetSyncFolder = () => withHandleStore('readwrite', (os) => os.delete(FS_KEY));
+
+  let folderSyncBusy = false;
+  let folderSyncAgain = false;
+  let folderSyncTimer = null;
+
+  function scheduleFolderSync() {
+    if (!isPro()) return;
+    if (folderSyncTimer) clearTimeout(folderSyncTimer);
+    folderSyncTimer = setTimeout(() => folderSync({ interactive: false, quiet: true }), 2500);
+  }
+
+  /**
+   * Read the library file in the chosen folder, merge it, and write the
+   * result back. `interactive` may ask Chrome for permission again, which
+   * needs a click; background runs only use a permission already granted.
+   */
+  async function folderSync(opts) {
+    const o = opts || {};
+    if (!isPro()) {
+      if (!o.quiet) openUpgradeModal('sync');
+      renderFolderSyncStatus();
+      return;
+    }
+    if (folderSyncBusy) {
+      folderSyncAgain = true;
+      return;
+    }
+    const folder = await loadSyncFolder();
+    if (!folder) {
+      if (!o.quiet) showToast('Choose a folder first.');
+      renderFolderSyncStatus();
+      return;
+    }
+
+    folderSyncBusy = true;
+    try {
+      let permission = await folder.queryPermission({ mode: 'readwrite' });
+      if (permission !== 'granted' && o.interactive) permission = await folder.requestPermission({ mode: 'readwrite' });
+      if (permission !== 'granted') {
+        await store.setFolderSyncMeta({ needsPermission: true, folderName: folder.name });
+        return;
+      }
+
+      const fileHandle = await folder.getFileHandle(store.FOLDER_SYNC_FILE, { create: true });
+      const text = await (await fileHandle.getFile()).text();
+      const res = await store.folderSyncMerge(text);
+      if (!res.ok) {
+        await store.setFolderSyncMeta({ lastError: res.error, needsPermission: false });
+        if (!o.quiet) showToast(res.error);
+        return;
+      }
+      // Only write when something differs, so cloud drives are not asked to
+      // upload an identical file on every visit.
+      if (!res.upToDate) {
+        const writable = await fileHandle.createWritable();
+        await writable.write(res.text);
+        await writable.close();
+      }
+      await store.setFolderSyncMeta({
+        folderName: folder.name,
+        lastSyncAt: Date.now(),
+        lastError: '',
+        needsPermission: false,
+        prompts: res.prompts
+      });
+      if (res.changed) {
+        showToast(
+          'Synced with “' + folder.name + '”. Changes from the folder were merged in' +
+            (res.removed ? ', and ' + res.removed + ' item(s) deleted on another computer were removed. A backup was taken first' : '') +
+            '.'
+        );
+      } else if (!o.quiet) {
+        showToast('Synced with “' + folder.name + '”.');
+      }
+    } catch (err) {
+      const message = (err && err.message) || 'Folder sync failed.';
+      await store.setFolderSyncMeta({ lastError: message });
+      if (!o.quiet) showToast('Folder sync failed: ' + message);
+    } finally {
+      folderSyncBusy = false;
+      renderFolderSyncStatus();
+      if (folderSyncAgain) {
+        folderSyncAgain = false;
+        scheduleFolderSync();
+      }
+    }
+  }
+
+  async function renderFolderSyncStatus() {
+    if (!el.folderSyncStatus) return;
+    const pro = isPro();
+    const [meta, folder] = await Promise.all([store.getFolderSyncMeta(), loadSyncFolder()]);
+    const supported = typeof window.showDirectoryPicker === 'function';
+
+    el.folderSyncStop.style.display = folder ? '' : 'none';
+    el.folderSyncNow.style.display = folder ? '' : 'none';
+    el.folderSyncChoose.textContent = folder ? 'Change folder' : 'Choose folder';
+    // Firefox, Safari and Brave (by default) have no folder picker for
+    // extensions, so the button would only ever show an error.
+    el.folderSyncChoose.disabled = !supported;
+    el.folderSyncChoose.title = supported ? '' : UNSUPPORTED_FOLDER_SYNC;
+
+    let text = '';
+    let warn = false;
+    if (!supported) {
+      text = UNSUPPORTED_FOLDER_SYNC;
+      warn = true;
+    } else if (!pro) {
+      text = folder ? 'Paused: folder sync is part of OmniPrompt Pro.' : '';
+    } else if (!folder) {
+      text = 'Not set up.';
+    } else if (meta.needsPermission) {
+      text = 'Chrome needs your OK to use “' + folder.name + '” again. Press Sync now.';
+      warn = true;
+    } else if (meta.lastError) {
+      text = meta.lastError;
+      warn = true;
+    } else {
+      text =
+        'Syncing with “' + folder.name + '”. Last sync: ' + describeAge(meta.lastSyncAt) + '.' +
+        (typeof meta.prompts === 'number' ? ' ' + meta.prompts + ' prompt' + (meta.prompts === 1 ? '' : 's') + ' of your own in the file.' : '');
+    }
+    el.folderSyncStatus.innerHTML = warn ? '<span class="sync-warn">' + escapeHtml(text) + '</span>' : escapeHtml(text);
+  }
+
+  function bindFolderSync() {
+    if (!el.folderSyncChoose) return;
+
+    el.folderSyncChoose.addEventListener('click', async () => {
+      if (!isPro()) {
+        openUpgradeModal('sync');
+        return;
+      }
+      if (typeof window.showDirectoryPicker !== 'function') {
+        showToast(UNSUPPORTED_FOLDER_SYNC);
+        return;
+      }
+      let folder;
+      try {
+        folder = await window.showDirectoryPicker({ id: 'omniprompt-sync', mode: 'readwrite' });
+      } catch (e) {
+        return; // the user closed the picker
+      }
+      await saveSyncFolder(folder);
+      await store.setFolderSyncMeta({ folderName: folder.name, connectedAt: Date.now(), lastError: '', needsPermission: false });
+      await folderSync({ interactive: true });
+    });
+
+    el.folderSyncNow.addEventListener('click', () => folderSync({ interactive: true }));
+
+    el.folderSyncStop.addEventListener('click', async () => {
+      if (!window.confirm('Stop syncing with this folder?\n\nThe file in the folder and your library here are both left as they are.')) return;
+      await forgetSyncFolder();
+      await store.clearFolderSyncMeta();
+      renderFolderSyncStatus();
+      showToast('Folder sync stopped. Nothing was deleted.');
+    });
+
+    if (el.forgetRemembered) {
+      el.forgetRemembered.addEventListener('click', async () => {
+        await store.clearRememberedValues();
+        showToast('Remembered answers forgotten on this computer.');
+      });
+    }
+
+    renderFolderSyncStatus();
+  }
+
+  /* =====================================================================
      Settings
      ===================================================================== */
 
@@ -1383,7 +4315,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.slashChar.value = settings.slashTriggerChar;
     el.slashChar.disabled = !settings.slashEnabled;
     el.paletteEnabled.checked = !!settings.enablePalette;
-    el.hotkeyDisplay.textContent = settings.paletteHotkey.display;
+    el.hotkeyDisplay.textContent = hotkeyLabel(settings.paletteHotkey);
     el.rankFavorites.checked = !!settings.rankFavorites;
     el.rankRecents.checked = !!settings.rankRecents;
     el.syncEnabled.checked = !!settings.syncEnabled;
@@ -1392,26 +4324,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     paintHotkeyPresets();
     renderDisabledSites();
+    renderEverywhereStatus();
+    renderEnabledSites();
     renderSyncStatus();
     paintLicenseState();
   }
 
   function paintLicenseState() {
     if (!el.licenseTierPill) return;
+    paintCheckoutLinks();
     const isPro = store.isPro ? store.isPro() : false;
     const count = store.getCustomCount ? store.getCustomCount() : 0;
-    const limit = store.getFreeLimit ? store.getFreeLimit() : 25;
+    const limit = store.getFreeLimit ? store.getFreeLimit() : 20;
     const lic = store.getLicense ? store.getLicense() : null;
 
     if (el.customPromptCount) el.customPromptCount.textContent = String(count);
 
     const price = store.getProInfo().price;
+    const builtIns = store.getBuiltins().length;
+
+    // The comparison table reads the real numbers, so it cannot drift from the code.
+    const setCell = (cellId, text) => {
+      const cell = document.getElementById(cellId);
+      if (cell) cell.textContent = text;
+    };
+    setCell('plan-builtins', 'All ' + builtIns);
+    setCell('plan-free-limit', String(limit));
+    setCell('plan-pro-price', price + ' once');
+    const compare = document.getElementById('plan-compare');
+    if (compare) compare.setAttribute('data-plan', isPro ? 'pro' : 'free');
 
     if (isPro) {
-      el.licenseTierPill.textContent = 'OmniPrompt Pro';
+      el.licenseTierPill.textContent = 'You are on Pro';
       el.licenseTierPill.className = 'pro-tier-pill pro';
       el.licenseTierDesc.innerHTML =
-        'OmniPrompt Pro is <strong>active</strong> for life. You have unlimited prompts, version history and context blocks.';
+        'OmniPrompt Pro is <strong>active</strong> for life: unlimited prompts, client workspaces, saved values, ' +
+        'stepped chains, folder sync, library tools, earlier versions and context blocks.' +
+        (store.getProInfo().mode === 'test' ? ' <em>(Dodo test mode)</em>' : '');
       if (el.licenseActiveDetails) el.licenseActiveDetails.style.display = 'flex';
       if (lic && lic.key && el.licenseMaskedKey) {
         const clean = lic.key;
@@ -1421,18 +4370,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (el.licenseFreeActions) el.licenseFreeActions.style.display = 'none';
       if (el.licenseActiveActions) el.licenseActiveActions.style.display = 'block';
     } else {
-      el.licenseTierPill.textContent = 'Free Tier';
+      el.licenseTierPill.textContent = 'You are on Free';
       el.licenseTierPill.className = 'pro-tier-pill free';
       el.licenseTierDesc.innerHTML =
-        'Free includes all 110 built-in prompts and <strong>' +
+        'Free includes all ' +
+        builtIns +
+        ' built-in prompts and <strong>' +
         count +
         ' / ' +
         limit +
-        '</strong> of your own. Pro is a one-time ' +
+        '</strong> of your own, plus backups and restore. Pro is a one-time ' +
         escapeHtml(price) +
-        ': unlimited prompts, version history and context blocks.';
+        ': unlimited prompts, client workspaces, saved values, stepped chains, folder sync and library tools.';
       if (el.licenseActiveDetails) el.licenseActiveDetails.style.display = 'none';
-      if (el.licenseFreeActions) el.licenseFreeActions.style.display = 'block';
+      if (el.licenseFreeActions) el.licenseFreeActions.style.display = 'flex';
       if (el.licenseActiveActions) el.licenseActiveActions.style.display = 'none';
     }
   }
@@ -1443,37 +4394,205 @@ document.addEventListener('DOMContentLoaded', () => {
     el.licenseFeedback.className = 'field-note license-feedback' + (type ? ' ' + type : '');
   }
 
+  /* =====================================================================
+     Paywall
+     ===================================================================== */
+
+  /**
+   * One message per moment. The headline answers what the user was trying to
+   * do when they hit the wall, so the offer reads as the next step rather
+   * than an interruption. Every variant says the free prompts keep working.
+   */
+  function upgradeCopy(reason, limit) {
+    const copy = {
+      limit: {
+        eyebrow: 'Free limit reached',
+        headline: 'Keep building your library.',
+        sub: 'Your ' + limit + ' prompts stay yours and keep working. Pro removes the cap.'
+      },
+      history: {
+        eyebrow: 'Version history',
+        headline: 'Undo any edit in one click.',
+        sub: 'Your earlier versions are already saved. Pro brings them back.'
+      },
+      blocks: {
+        eyebrow: 'Context blocks',
+        headline: 'Write your brief once. Reuse it everywhere.',
+        sub: 'Save a client brief, brand voice or project rules once. The Client Work prompts, and any of yours, fill them in for you.'
+      },
+      workspaces: {
+        eyebrow: 'Client workspaces',
+        headline: 'Switch client, and every field follows.',
+        sub: "Keep each client's name, tone and brief in a workspace. Every prompt fills in for the client you pick."
+      },
+      sets: {
+        eyebrow: 'Saved values',
+        headline: 'Fill a form in one click.',
+        sub: 'Save the values you use often under a name. Pro also remembers your short answers for next time.'
+      },
+      chains: {
+        eyebrow: 'Stepped chains',
+        headline: 'Run a sequence, one step at a time.',
+        sub: 'Build a chain of prompts once. Insert each step when you are ready for it. Nothing is sent for you.'
+      },
+      sync: {
+        eyebrow: 'Folder sync',
+        headline: 'One library on every computer.',
+        sub: 'Keep your library in a folder you choose, such as Dropbox or OneDrive. No account and no server of ours.'
+      },
+      library: {
+        eyebrow: 'Library tools',
+        headline: 'Keep a big library tidy.',
+        sub: 'Folders inside folders, tag filters, bulk edit and a tidy-up list for unused and duplicate prompts.'
+      },
+      compare: {
+        eyebrow: 'Compare across AIs',
+        headline: 'Ask several AIs at once.',
+        sub: 'Fill your prompt once, dispatch it to ChatGPT, Claude, Gemini and more, and read answers side by side.'
+      },
+      smartTemplates: {
+        eyebrow: 'Smart templates',
+        headline: 'Dynamic prompts that adapt.',
+        sub: 'Conditionals, date maths, required fields and repeatable blocks for powerful workflows.'
+      },
+      customModifiers: {
+        eyebrow: 'Custom modifiers',
+        headline: 'Your own right-click actions.',
+        sub: 'Create up to 30 custom instructions and run them from your right-click context menu.'
+      },
+      siteRules: {
+        eyebrow: 'Site rules',
+        headline: 'The right prompts for the right site.',
+        sub: 'Prompts for Gmail, GitHub, or any website sit at the top of the menu automatically.'
+      },
+      pro: {
+        eyebrow: 'OmniPrompt Pro',
+        headline: 'Your prompt library, without limits.',
+        sub: 'Unlimited prompts, client workspaces, saved values, chains and folder sync. Pay once, keep it for life.'
+      }
+    };
+    return copy[reason] || copy.pro;
+  }
+
+  const UPGRADE_REASONS = [
+    'limit',
+    'history',
+    'blocks',
+    'workspaces',
+    'sets',
+    'chains',
+    'sync',
+    'library',
+    'compare',
+    'smartTemplates',
+    'customModifiers',
+    'siteRules'
+  ];
+
+  let upgradeReturnFocus = null;
+
   function openUpgradeModal(reason) {
     if (!el.upgradeModal) return;
-    if (el.upgradeModalReason) {
-      const limit = store.getFreeLimit ? store.getFreeLimit() : 25;
-      const reasons = {
-        limit: 'You have ' + limit + ' prompts of your own, the most Free keeps. Nothing is deleted: every prompt still works and exports.',
-        history: 'Your earlier versions are saved. Pro lets you restore them.',
-        blocks: 'Context blocks drop one saved prompt into another, so a client brief or style guide is written once.'
-      };
-      el.upgradeModalReason.textContent =
-        reasons[reason] || 'One payment, yours for life. Unlimited prompts, version history and context blocks.';
+    const key = UPGRADE_REASONS.indexOf(reason) !== -1 ? reason : 'pro';
+    const info = store.getProInfo();
+    const limit = store.getFreeLimit ? store.getFreeLimit() : info.freeLimit;
+    const count = store.getCustomCount ? store.getCustomCount() : 0;
+    const uses = store.getTotalUses ? store.getTotalUses() : 0;
+    const builtIns = Array.isArray(window.DEFAULT_PROMPTS) ? window.DEFAULT_PROMPTS.length : 136;
+    const copy = upgradeCopy(key, limit);
+
+    if (el.upgradeModalContent) el.upgradeModalContent.setAttribute('data-reason', key);
+    if (el.upgradeModalTitle) el.upgradeModalTitle.textContent = copy.eyebrow;
+    if (el.upgradeModalHeadline) el.upgradeModalHeadline.textContent = copy.headline;
+    if (el.upgradeModalReason) el.upgradeModalReason.textContent = copy.sub;
+
+    // Show the limit as a full bar: seeing it lands faster than reading it.
+    if (el.upgradeModalMeter) {
+      const showMeter = key === 'limit';
+      el.upgradeModalMeter.hidden = !showMeter;
+      if (showMeter) {
+        const pct = limit > 0 ? Math.min(100, Math.round((count / limit) * 100)) : 100;
+        if (el.upgradeModalMeterFill) el.upgradeModalMeterFill.style.width = pct + '%';
+        if (el.upgradeModalMeterLabel) {
+          el.upgradeModalMeterLabel.textContent = Math.min(count, limit) + ' of ' + limit + ' prompts used';
+        }
+      }
     }
-    if (el.upgradeModalKey) el.upgradeModalKey.value = '';
+
+    // The user's own numbers are the only proof we show. Nothing invented.
+    if (el.upgradeModalProof) {
+      el.upgradeModalProof.textContent = '';
+      if (uses >= 5) {
+        const strong = document.createElement('strong');
+        strong.textContent = uses + ' prompts';
+        el.upgradeModalProof.append("You've inserted ", strong, ' with OmniPrompt so far.');
+        el.upgradeModalProof.hidden = false;
+      } else {
+        el.upgradeModalProof.hidden = true;
+      }
+    }
+
+    // The list comes from the store, so it always matches what Pro does.
+    // Lead with the benefit that matches what they tried to do.
+    if (el.upgradeModalBenefits) {
+      const features = (info.features || []).slice();
+      features.sort((a, b) => (a.id === key ? -1 : b.id === key ? 1 : 0));
+      el.upgradeModalBenefits.innerHTML = features
+        .map(
+          (f) =>
+            '<li class="benefit-item' +
+            (f.id === key ? ' is-match' : '') +
+            '" data-benefit="' +
+            escapeAttr(f.id) +
+            '"><span class="benefit-check" aria-hidden="true">✓</span><div><strong>' +
+            escapeHtml(f.title) +
+            '</strong><p>' +
+            escapeHtml(f.text) +
+            '</p></div></li>'
+        )
+        .join('');
+    }
+
+    if (el.upgradeModalPrice) el.upgradeModalPrice.textContent = info.price;
+    if (el.upgradeModalBuy) {
+      el.upgradeModalBuy.href = info.checkoutUrl;
+      el.upgradeModalBuy.textContent = 'Get Pro for ' + info.price + ' →';
+    }
+    if (el.upgradeModalKeepFree) {
+      el.upgradeModalKeepFree.textContent =
+        'Free stays free: ' + builtIns + ' built-ins, ' + limit + ' of your own, backups and restore, export.';
+    }
+
+    if (el.upgradeModalKey) {
+      el.upgradeModalKey.value = '';
+      el.upgradeModalKey.removeAttribute('aria-invalid');
+    }
+    if (el.upgradeModalKeyBox) el.upgradeModalKeyBox.open = false;
     if (el.upgradeModalFeedback) {
       el.upgradeModalFeedback.textContent = '';
       el.upgradeModalFeedback.className = 'field-note';
     }
+
+    upgradeReturnFocus = document.activeElement;
     el.upgradeModal.style.display = 'flex';
-    if (el.upgradeModalKey) {
-      setTimeout(() => el.upgradeModalKey.focus(), 50);
-    }
+    // Focus the one action that matters, not the licence field.
+    if (el.upgradeModalBuy) setTimeout(() => el.upgradeModalBuy.focus(), 50);
   }
 
   function closeUpgradeModal() {
     if (!el.upgradeModal) return;
     el.upgradeModal.style.display = 'none';
+    if (upgradeReturnFocus && typeof upgradeReturnFocus.focus === 'function' && upgradeReturnFocus.isConnected) {
+      upgradeReturnFocus.focus();
+    }
+    upgradeReturnFocus = null;
   }
 
   function paintHotkeyPresets() {
+    if (el.resetHotkey) el.resetHotkey.textContent = 'Reset to ' + hotkeyLabel(store.DEFAULT_HOTKEY);
     document.querySelectorAll('.btn-preset-hotkey').forEach((btn) => {
       const preset = HOTKEY_PRESETS[btn.getAttribute('data-hotkey')];
+      if (preset) btn.textContent = hotkeyLabel(preset);
       btn.classList.toggle('active', !!preset && preset.display === settings.paletteHotkey.display);
     });
   }
@@ -1498,10 +4617,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (el.activateLicenseBtn && el.licenseKeyInput) {
+      el.licenseKeyInput.addEventListener('input', () => {
+        el.licenseKeyInput.removeAttribute('aria-invalid');
+        setLicenseFeedback('', '');
+      });
+
       el.activateLicenseBtn.addEventListener('click', async () => {
         const key = el.licenseKeyInput.value.trim();
         if (!key) {
           setLicenseFeedback('Please enter a license key.', 'error');
+          el.licenseKeyInput.setAttribute('aria-invalid', 'true');
           el.licenseKeyInput.focus();
           return;
         }
@@ -1514,17 +4639,20 @@ document.addEventListener('DOMContentLoaded', () => {
         el.activateLicenseBtn.textContent = 'Activate';
 
         if (res.success) {
+          el.licenseKeyInput.removeAttribute('aria-invalid');
           el.licenseKeyInput.value = '';
           setLicenseFeedback('', '');
           paintLicenseState();
           updateCounts();
-          showToast('OmniPrompt Pro activated! Thank you for your support.');
+          showToast('OmniPrompt Pro is active. Thank you for supporting it.');
         } else {
+          el.licenseKeyInput.setAttribute('aria-invalid', 'true');
           setLicenseFeedback(res.error || 'Invalid license key.', 'error');
         }
       });
 
       el.licenseKeyInput.addEventListener('keydown', (e) => {
+        if (isImeKey(e)) return;
         if (e.key === 'Enter') {
           e.preventDefault();
           el.activateLicenseBtn.click();
@@ -1584,9 +4712,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     el.resetHotkey.addEventListener('click', async () => {
       await saveSetting('paletteHotkey', store.DEFAULT_HOTKEY);
-      el.hotkeyDisplay.textContent = settings.paletteHotkey.display;
+      el.hotkeyDisplay.textContent = hotkeyLabel(settings.paletteHotkey);
       paintHotkeyPresets();
-      showToast('Shortcut reset to Alt+K.');
+      showToast('Shortcut reset to ' + hotkeyLabel(settings.paletteHotkey) + '.');
     });
 
     document.querySelectorAll('.btn-preset-hotkey').forEach((btn) => {
@@ -1594,9 +4722,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const preset = HOTKEY_PRESETS[btn.getAttribute('data-hotkey')];
         if (!preset) return;
         await saveSetting('paletteHotkey', preset);
-        el.hotkeyDisplay.textContent = settings.paletteHotkey.display;
+        el.hotkeyDisplay.textContent = hotkeyLabel(settings.paletteHotkey);
         paintHotkeyPresets();
-        showToast('Shortcut set to ' + settings.paletteHotkey.display);
+        showToast('Shortcut set to ' + hotkeyLabel(settings.paletteHotkey));
       });
     });
 
@@ -1622,13 +4750,57 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    el.newDisabledSite.addEventListener('input', () => {
+      if (el.newDisabledSiteError) el.newDisabledSiteError.textContent = '';
+      el.newDisabledSite.removeAttribute('aria-invalid');
+    });
+
     el.addDisabledSite.addEventListener('click', addDisabledSite);
     el.newDisabledSite.addEventListener('keydown', (e) => {
+      if (isImeKey(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         addDisabledSite();
       }
     });
+
+    if (el.everywhereEnabled) {
+      el.everywhereEnabled.addEventListener('change', () => {
+        if (typeof chrome === 'undefined' || !chrome.permissions) return;
+        if (el.everywhereEnabled.checked) {
+          chrome.permissions.request({ origins: ['<all_urls>'] }, (granted) => {
+            void chrome.runtime.lastError;
+            el.everywhereEnabled.checked = !!granted;
+            renderEverywhereStatus();
+            if (granted) showToast('OmniPrompt enabled on every website.');
+            else showToast('Permission was not granted.');
+          });
+        } else {
+          chrome.permissions.remove({ origins: ['<all_urls>'] }, (removed) => {
+            void chrome.runtime.lastError;
+            renderEverywhereStatus();
+            if (removed) showToast('Every website access removed.');
+          });
+        }
+      });
+    }
+
+    if (el.btnAddEnabledSite) {
+      el.btnAddEnabledSite.addEventListener('click', addEnabledSite);
+    }
+    if (el.newEnabledSite) {
+      el.newEnabledSite.addEventListener('input', () => {
+        if (el.newEnabledSiteError) el.newEnabledSiteError.textContent = '';
+        el.newEnabledSite.removeAttribute('aria-invalid');
+      });
+      el.newEnabledSite.addEventListener('keydown', (e) => {
+        if (isImeKey(e)) return;
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addEnabledSite();
+        }
+      });
+    }
   }
 
   function startRecording() {
@@ -1641,7 +4813,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function stopRecording() {
     recordingHotkey = false;
     el.hotkeyRecorder.classList.remove('recording');
-    el.hotkeyDisplay.textContent = settings.paletteHotkey.display;
+    el.hotkeyDisplay.textContent = hotkeyLabel(settings.paletteHotkey);
   }
 
   async function handleRecorderKey(e) {
@@ -1678,8 +4850,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Record the physical key. On macOS Option+K reports e.key "˚", and AltGr
+    // or dead keys do the same on other layouts, which labelled the shortcut
+    // "Alt+˚". The palette matches on e.code first, so this only fixes labels.
+    const physical = /^Key([A-Z])$/.exec(e.code || '') || /^Digit([0-9])$/.exec(e.code || '');
     const hotkey = store.normalizeHotkey({
-      key: e.key.toLowerCase(),
+      key: physical ? physical[1].toLowerCase() : e.key.toLowerCase(),
       code: e.code,
       ctrlKey: e.ctrlKey,
       altKey: e.altKey,
@@ -1690,7 +4866,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await saveSetting('paletteHotkey', hotkey);
     stopRecording();
     paintHotkeyPresets();
-    showToast('Shortcut saved: ' + settings.paletteHotkey.display);
+    showToast('Shortcut saved: ' + hotkeyLabel(settings.paletteHotkey));
   }
 
   function renderDisabledSites() {
@@ -1723,7 +4899,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function addDisabledSite() {
     const raw = el.newDisabledSite.value.trim();
-    if (!raw) return;
+    if (!raw) {
+      if (el.newDisabledSiteError) el.newDisabledSiteError.textContent = 'Please enter a hostname.';
+      el.newDisabledSite.setAttribute('aria-invalid', 'true');
+      el.newDisabledSite.focus();
+      return;
+    }
 
     // Accept a pasted URL as well as a bare hostname.
     let host = raw.toLowerCase();
@@ -1734,9 +4915,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     host = host.replace(/^www\./, '').replace(/\/.*$/, '');
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) {
-      showToast('That does not look like a hostname. Try example.com');
+      if (el.newDisabledSiteError) el.newDisabledSiteError.textContent = 'That does not look like a hostname. Try example.com';
+      el.newDisabledSite.setAttribute('aria-invalid', 'true');
+      el.newDisabledSite.focus();
       return;
     }
+
+    if (el.newDisabledSiteError) el.newDisabledSiteError.textContent = '';
+    el.newDisabledSite.removeAttribute('aria-invalid');
 
     await store.setSiteDisabled(host, true);
     settings = store.getSettings();
@@ -1744,6 +4930,128 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDisabledSites();
     broadcastSettings();
     showToast('OmniPrompt is off on ' + host);
+  }
+
+  async function renderEverywhereStatus() {
+    if (!el.everywhereEnabled) return;
+    if (typeof chrome === 'undefined' || !chrome.permissions || !chrome.permissions.contains) {
+      el.everywhereEnabled.checked = false;
+      if (el.everywhereStatus) el.everywhereStatus.textContent = '';
+      return;
+    }
+    const hasEverywhere = await new Promise((resolve) => {
+      chrome.permissions.contains({ origins: ['<all_urls>'] }, (res) => {
+        void chrome.runtime.lastError;
+        resolve(res);
+      });
+    });
+    el.everywhereEnabled.checked = !!hasEverywhere;
+    if (el.everywhereStatus) {
+      if (hasEverywhere) {
+        el.everywhereStatus.textContent = 'Active. OmniPrompt is enabled on all websites.';
+      } else {
+        el.everywhereStatus.textContent = 'Off. OmniPrompt is active on AI chat sites and individually enabled sites.';
+      }
+    }
+  }
+
+  async function renderEnabledSites() {
+    if (!el.enabledSitesList) return;
+    if (typeof chrome === 'undefined' || !chrome.permissions || !chrome.permissions.getAll) {
+      el.enabledSitesList.innerHTML = '';
+      return;
+    }
+    const perms = await new Promise((resolve) => {
+      chrome.permissions.getAll((res) => {
+        void chrome.runtime.lastError;
+        resolve(res || {});
+      });
+    });
+    const origins = (perms && perms.origins) || [];
+    const manifest = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
+      ? chrome.runtime.getManifest()
+      : {};
+    const staticHosts = new Set(manifest.host_permissions || []);
+
+    const dynamicOrigins = origins.filter((o) => o !== '<all_urls>' && !staticHosts.has(o));
+
+    if (dynamicOrigins.length === 0) {
+      el.enabledSitesList.innerHTML = '<span class="field-note">No individual websites enabled yet.</span>';
+      return;
+    }
+
+    el.enabledSitesList.innerHTML = dynamicOrigins
+      .map((origin) => {
+        let display = origin.replace(/^https?:\/\//, '').replace(/\/\*?$/, '');
+        return (
+          '<span class="disabled-site-pill">' +
+          escapeHtml(display) +
+          '<button type="button" class="btn-ghost btn-mini pill-remove" data-remove-origin="' +
+          escapeHtml(origin) +
+          '" title="Remove">✕</button></span>'
+        );
+      })
+      .join('');
+
+    el.enabledSitesList.querySelectorAll('[data-remove-origin]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const originToRemove = btn.getAttribute('data-remove-origin');
+        chrome.permissions.remove({ origins: [originToRemove] }, (removed) => {
+          void chrome.runtime.lastError;
+          if (removed) {
+            renderEnabledSites();
+            showToast('Site access removed.');
+          } else {
+            showToast('Could not remove site access.');
+          }
+        });
+      });
+    });
+  }
+
+  async function addEnabledSite() {
+    if (!el.newEnabledSite) return;
+    const raw = el.newEnabledSite.value.trim();
+    if (!raw) {
+      if (el.newEnabledSiteError) el.newEnabledSiteError.textContent = 'Please enter a website link or domain.';
+      el.newEnabledSite.setAttribute('aria-invalid', 'true');
+      el.newEnabledSite.focus();
+      return;
+    }
+
+    let host = raw.toLowerCase();
+    try {
+      if (host.indexOf('://') !== -1) host = new URL(host).hostname;
+    } catch (e) {
+      /* treat it as a hostname */
+    }
+    host = host.replace(/^www\./, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) {
+      if (el.newEnabledSiteError) el.newEnabledSiteError.textContent = 'That does not look like a hostname. Try example.com or https://linear.app';
+      el.newEnabledSite.setAttribute('aria-invalid', 'true');
+      el.newEnabledSite.focus();
+      return;
+    }
+
+    if (el.newEnabledSiteError) el.newEnabledSiteError.textContent = '';
+    el.newEnabledSite.removeAttribute('aria-invalid');
+
+    if (typeof chrome === 'undefined' || !chrome.permissions || !chrome.permissions.request) {
+      showToast('Permissions API not available.');
+      return;
+    }
+
+    const pattern = 'https://' + host + '/*';
+    chrome.permissions.request({ origins: [pattern] }, (granted) => {
+      void chrome.runtime.lastError;
+      if (granted) {
+        el.newEnabledSite.value = '';
+        renderEnabledSites();
+        showToast('OmniPrompt enabled on ' + host);
+      } else {
+        showToast('Permission was not granted.');
+      }
+    });
   }
 
   function renderSyncStatus() {
@@ -1845,8 +5153,15 @@ document.addEventListener('DOMContentLoaded', () => {
             (result.skipped ? ', skipped ' + result.skipped + ' duplicate(s)' : '') +
             ' from ' +
             result.source +
-            '.'
+            '.' +
+            (result.workspaces ? ' ' + result.workspaces + ' workspace(s).' : '') +
+            (result.chains ? ' ' + result.chains + ' chain(s).' : '') +
+            (result.overLimit
+              ? ' ' + result.overLimit + ' not added: Free holds ' + result.limit + ' of your own prompts.'
+              : '')
         );
+        // The user tried to go past the Free limit, so this is the moment to say what Pro does.
+        if (result.overLimit) openUpgradeModal('limit');
       };
       reader.onerror = () => {
         e.target.value = '';
@@ -1901,6 +5216,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       await store.eraseAllData();
+      // Disconnect folder sync too, or the next sync would bring it all back.
+      // The file in the folder is the user's own copy and is left alone.
+      await forgetSyncFolder();
+      renderFolderSyncStatus();
       settings = store.getSettings();
       paintSettings();
       renderSidebar();
@@ -1917,7 +5236,64 @@ document.addEventListener('DOMContentLoaded', () => {
      ===================================================================== */
 
   let modalPrompt = null;
+  let modalVariables = [];
   const modalCache = {};
+
+  /** Workspace chip and saved values for the copy form, as in the page form. */
+  function renderOptModalTools(prompt, sources) {
+    if (!el.modalTools) return;
+    const sets = store.getVariableSets(prompt.id);
+    const pro = isPro();
+    let html = '';
+    if (sources.workspace) html += '<span class="ws-chip">💼 ' + escapeHtml(sources.workspace.name) + '</span>';
+    if (sets.length) {
+      html +=
+        '<select class="setting-select" id="opt-sets-select" aria-label="Fill from saved values"><option value="">Fill from saved values…</option>' +
+        sets.map((s) => '<option value="' + escapeAttr(s.id) + '">' + escapeHtml(s.name) + '</option>').join('') +
+        '</select>';
+    }
+    html +=
+      '<button type="button" class="btn-secondary btn-mini" id="opt-sets-save">💾 Save values' +
+      (pro ? '' : ' <span class="pro-mini">PRO</span>') +
+      '</button>';
+    el.modalTools.innerHTML = html;
+
+    const select = el.modalTools.querySelector('#opt-sets-select');
+    if (select) {
+      select.addEventListener('change', () => {
+        const chosen = sets.filter((s) => s.id === select.value)[0];
+        select.value = '';
+        if (!chosen) return;
+        if (!pro) {
+          openUpgradeModal('sets');
+          return;
+        }
+        el.modalFields.querySelectorAll('[data-var]').forEach((f) => {
+          const name = f.getAttribute('data-var');
+          if (Object.prototype.hasOwnProperty.call(chosen.values, name)) f.value = chosen.values[name];
+        });
+        updateModalPreview();
+        showToast('Filled from “' + chosen.name + '”.');
+      });
+    }
+
+    el.modalTools.querySelector('#opt-sets-save').addEventListener('click', async () => {
+      if (!pro) {
+        openUpgradeModal('sets');
+        return;
+      }
+      const values = readModalValues();
+      const name = await askForText({ title: 'Save these values', label: 'Name', note: 'The same name replaces an older set.', confirm: 'Save' });
+      if (!name) return;
+      try {
+        await store.saveVariableSet(prompt.id, name, values);
+        renderOptModalTools(prompt, sources);
+        showToast('Saved as “' + name + '”.');
+      } catch (err) {
+        handleProError(err);
+      }
+    });
+  }
 
   function bindModals() {
     bindCategoryModal();
@@ -1933,6 +5309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.textModalCancel.addEventListener('click', () => resolveTextModal(null));
     el.textModalConfirm.addEventListener('click', () => resolveTextModal(el.textModalInput.value));
     el.textModalInput.addEventListener('keydown', (e) => {
+      if (isImeKey(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         resolveTextModal(el.textModalInput.value);
@@ -1947,14 +5324,35 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // Checkout opens in a new tab. When the buyer comes back with the key from
+    // their email, the field is already open and waiting.
+    if (el.upgradeModalBuy) {
+      el.upgradeModalBuy.addEventListener('click', () => {
+        if (el.upgradeModalKeyBox) el.upgradeModalKeyBox.open = true;
+        if (el.upgradeModalFeedback) {
+          el.upgradeModalFeedback.textContent = 'Paid? Paste the key from your email here.';
+          el.upgradeModalFeedback.className = 'field-note license-feedback';
+        }
+      });
+    }
+
     if (el.upgradeModalActivate && el.upgradeModalKey) {
+      el.upgradeModalKey.addEventListener('input', () => {
+        el.upgradeModalKey.removeAttribute('aria-invalid');
+        if (el.upgradeModalFeedback) {
+          el.upgradeModalFeedback.textContent = '';
+          el.upgradeModalFeedback.className = 'field-note license-feedback';
+        }
+      });
+
       el.upgradeModalActivate.addEventListener('click', async () => {
         const key = el.upgradeModalKey.value.trim();
         if (!key) {
           if (el.upgradeModalFeedback) {
-            el.upgradeModalFeedback.textContent = 'Please enter a license key.';
+            el.upgradeModalFeedback.textContent = 'Paste your licence key first.';
             el.upgradeModalFeedback.className = 'field-note license-feedback error';
           }
+          el.upgradeModalKey.setAttribute('aria-invalid', 'true');
           el.upgradeModalKey.focus();
           return;
         }
@@ -1970,19 +5368,22 @@ document.addEventListener('DOMContentLoaded', () => {
         el.upgradeModalActivate.textContent = 'Activate';
 
         if (res.success) {
+          el.upgradeModalKey.removeAttribute('aria-invalid');
           closeUpgradeModal();
           paintLicenseState();
           updateCounts();
-          showToast('OmniPrompt Pro activated! Unlimited prompts unlocked.');
+          showToast('Pro is active. Workspaces, chains, folder sync and everything else in Pro are unlocked.');
         } else {
+          el.upgradeModalKey.setAttribute('aria-invalid', 'true');
           if (el.upgradeModalFeedback) {
-            el.upgradeModalFeedback.textContent = res.error || 'Invalid license key.';
+            el.upgradeModalFeedback.textContent = res.error || 'That key did not work. Check it matches your receipt email.';
             el.upgradeModalFeedback.className = 'field-note license-feedback error';
           }
         }
       });
 
       el.upgradeModalKey.addEventListener('keydown', (e) => {
+        if (isImeKey(e)) return;
         if (e.key === 'Enter') {
           e.preventDefault();
           el.upgradeModalActivate.click();
@@ -1999,7 +5400,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.addEventListener('keydown', (e) => {
+      if (isImeKey(e)) return;
       if (e.key !== 'Escape') return;
+      if (el.tidyModal && el.tidyModal.style.display === 'flex') {
+        e.preventDefault();
+        closeTidyModal();
+        return;
+      }
       if (el.historyModal && el.historyModal.style.display === 'flex') {
         e.preventDefault();
         closeHistoryModal();
@@ -2047,13 +5454,22 @@ document.addEventListener('DOMContentLoaded', () => {
     modalPrompt = prompt;
     el.modalTitle.textContent = prompt.title;
 
-    // This page has no chat selection or URL to offer, so only date, time and
-    // inline defaults resolve. Badges say exactly that.
+    // This page has no chat selection or URL to offer, so only date, time,
+    // inline defaults and (Pro) the workspace and remembered answers
+    // resolve. Badges say exactly that.
+    const sources = store.getValueSources(prompt.id);
     const initial = template.buildInitialValues(
       prompt,
       { selection: '', url: '', title: '' },
-      { allowClipboard: false, cached: modalCache[prompt.id] || {} }
+      {
+        allowClipboard: false,
+        cached: modalCache[prompt.id] || {},
+        workspace: sources.workspace ? sources.workspace.values : null,
+        remembered: sources.remembered
+      }
     );
+    modalVariables = initial.variables;
+    renderOptModalTools(prompt, sources);
 
     el.modalFields.innerHTML = initial.variables
       .map((v, idx) => {
@@ -2122,6 +5538,7 @@ document.addEventListener('DOMContentLoaded', () => {
       field.addEventListener('input', updateModalPreview);
       field.addEventListener('change', updateModalPreview);
       field.addEventListener('keydown', (e) => {
+        if (isImeKey(e)) return;
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault();
           finishCopy();
@@ -2165,7 +5582,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const text = template.render(modalPrompt.template, values);
     const id = modalPrompt.id;
     const ok = await copyText(text);
-    if (ok) store.recordUse(id);
+    if (ok) {
+      store.recordUse(id);
+      store.rememberValues(id, values, modalVariables);
+    }
     showToast(ok ? 'Copied to clipboard.' : 'Could not copy.');
     closeVariableModal();
   }
@@ -2251,6 +5671,15 @@ document.addEventListener('DOMContentLoaded', () => {
     toastTimer = setTimeout(() => el.toast.classList.remove('show'), 3000);
   }
 
+  /**
+   * True while an IME (Chinese, Japanese, Korean) is composing. Its Enter and
+   * Esc belong to the IME and must not save, submit or close anything.
+   * Safari reports the confirming Enter as keyCode 229 with isComposing false.
+   */
+  function isImeKey(e) {
+    return !!e.isComposing || e.keyCode === 229;
+  }
+
   function escapeHtml(str) {
     return String(str == null ? '' : str)
       .replace(/&/g, '&amp;')
@@ -2262,5 +5691,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function escapeAttr(str) {
     return escapeHtml(str);
+  }
+
+  function cssEscape(str) {
+    return String(str).replace(/["\\]/g, '\\$&');
   }
 });

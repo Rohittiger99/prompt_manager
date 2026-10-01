@@ -12,9 +12,11 @@
  *   coordinator called an insert that overwrote the whole field.
  * - Page context (selection, URL, title) is captured before any overlay opens,
  *   because opening one collapses the selection.
- * - The clipboard is never read unless the user has turned that on.
+ * - The clipboard is only read when the user presses Paste in a form.
  * - Honours a per-site disable so the extension can be silenced on a site
  *   without uninstalling it.
+ * - Runs Pro stepped chains one step at a time. The user asks for the next
+ *   step; the page is never watched for the AI's reply.
  */
 
 (function () {
@@ -35,8 +37,8 @@
      ===================================================================== */
 
   /**
-   * All UI lives in a closed-off shadow root attached to documentElement, so
-   * page CSS cannot reach in and our CSS cannot leak out.
+   * All UI lives in an open shadow root attached to documentElement, so
+   * page CSS cannot reach in.
    */
   function createHost() {
     let host = document.getElementById(HOST_ID);
@@ -259,6 +261,7 @@
         submit: opts.submit,
         allowClipboard: !!settings.clipboardAutofill,
         allowSubmit: true,
+        compareMode: !!opts.compareMode,
         // A prompt whose fields all resolved themselves goes straight in.
         skipWhenComplete: false,
         // Lets the user return to wherever they picked this prompt from
@@ -266,6 +269,281 @@
         onBack: opts.onBack
       }
     );
+  }
+
+  /* =====================================================================
+     Stepped chains (Pro)
+     ===================================================================== */
+
+  /**
+   * The chain running in this tab, in memory only: { chainId, next, values }.
+   *
+   * OmniPrompt never reads the AI's reply to decide when a step is done. The
+   * user moves on by picking "Next step" from the slash menu or the palette,
+   * so nothing on the page is watched and nothing is sent on its own.
+   */
+  let activeChain = null;
+
+  /** What the menus show as the next step, or null when no chain is running. */
+  function getActiveChain() {
+    if (!activeChain || !window.OmniStore || !window.OmniStore.getChainStep) return null;
+    const step = window.OmniStore.getChainStep(activeChain.chainId, activeChain.next);
+    if (!step) {
+      activeChain = null;
+      return null;
+    }
+    return {
+      chainId: step.chainId,
+      title: step.chainTitle,
+      next: step.index,
+      total: step.total,
+      stepTitle: step.stepTitle
+    };
+  }
+
+  function openMenusLabel() {
+    const ways = [];
+    if (settings.slashEnabled && settings.slashTriggerChar) ways.push(settings.slashTriggerChar);
+    if (settings.enablePalette && settings.paletteHotkey) ways.push(window.OmniStore.formatHotkey(settings.paletteHotkey, window.OmniStore.isMacPlatform()));
+    return ways.length ? ways.join(' or ') : 'the OmniPrompt menu';
+  }
+
+  function startChain(chainId, options) {
+    const store = window.OmniStore;
+    if (!store || !store.isPro()) {
+      activeChain = null;
+      updateChainRunner();
+      showToast('Stepped chains are part of OmniPrompt Pro. Your chain is safe in OmniPrompt settings.', 'info');
+      return;
+    }
+    activeChain = null;
+    updateChainRunner();
+    runChainStep(chainId, 0, {}, options);
+  }
+
+  function continueChain(options) {
+    if (!activeChain) return;
+    if (!window.OmniStore.isPro()) {
+      activeChain = null;
+      updateChainRunner();
+      showToast('Stepped chains are part of OmniPrompt Pro.', 'info');
+      return;
+    }
+    runChainStep(activeChain.chainId, activeChain.next, activeChain.values, options);
+  }
+
+  /** Stop the chain. From the slash menu, the typed //token goes too. */
+  function endChain(options) {
+    const opts = options || {};
+    const had = !!activeChain;
+    activeChain = null;
+    updateChainRunner();
+    if (opts.replaceLength && window.ChatbotAdapters) {
+      window.ChatbotAdapters.replaceRange(opts.replaceLength, '', { target: opts.target, caret: opts.caret });
+    }
+    if (had) showToast('Chain ended.', 'ok');
+  }
+
+  function runChainStep(chainId, index, carried, options) {
+    const opts = options || {};
+    const store = window.OmniStore;
+    const step = store.getChainStep(chainId, index);
+    if (!step) {
+      activeChain = null;
+      updateChainRunner();
+      showToast('That chain no longer exists.', 'warn');
+      return;
+    }
+
+    const context = capturePageContext();
+    if (!context.selection && opts.selection) context.selection = opts.selection;
+    const prepared = store.prepareForUse(step.prompt);
+    const ready = prepared.prompt || step.prompt;
+
+    window.VariableModal.processPrompt(
+      ready,
+      context,
+      (renderedText, meta) => {
+        writeToPage(renderedText, {
+          target: opts.target,
+          caret: opts.caret,
+          replaceLength: opts.replaceLength,
+          submit: meta && typeof meta.submit === 'boolean' ? meta.submit : Boolean(opts.submit),
+          mode: opts.mode
+        }).then((result) => {
+          // Values typed in one step carry into the next, so a name asked for
+          // in step 1 is not asked for again.
+          const values = Object.assign({}, carried, (meta && meta.values) || {});
+          if (!result.ok) {
+            // The text went to the clipboard instead. Stay on this step so
+            // "Next step" offers it again.
+            activeChain = { chainId, next: index, values: carried };
+            updateChainRunner();
+            return;
+          }
+          if (index === 0) store.recordUse(chainId);
+          explainLockedBlocks(prepared);
+          if (step.isLast) {
+            activeChain = null;
+            updateChainRunner();
+            showToast('Chain finished: all ' + step.total + ' steps inserted.', 'ok');
+            return;
+          }
+          activeChain = { chainId, next: index + 1, values };
+          updateChainRunner();
+          showToast(
+            'Step ' + (index + 1) + ' of ' + step.total + ' inserted. When you are ready, open ' +
+              openMenusLabel() + ' for step ' + (index + 2) + '.',
+            'ok'
+          );
+        });
+      },
+      {
+        submit: opts.submit,
+        allowClipboard: !!settings.clipboardAutofill,
+        allowSubmit: true,
+        skipWhenComplete: false,
+        onBack: opts.onBack,
+        seed: carried
+      }
+    );
+  }
+
+  /** Floating persistent in-page runner card while a stepped chain is running. */
+  function updateChainRunner() {
+    if (!shadowRoot) return;
+    let runner = shadowRoot.getElementById('omni-chain-runner');
+    if (!activeChain) {
+      if (runner) runner.remove();
+      return;
+    }
+    const store = window.OmniStore;
+    if (!store || !store.getChainStep) {
+      if (runner) runner.remove();
+      return;
+    }
+    const step = store.getChainStep(activeChain.chainId, activeChain.next);
+    if (!step) {
+      if (runner) runner.remove();
+      return;
+    }
+
+    if (!runner) {
+      runner = document.createElement('div');
+      runner.id = 'omni-chain-runner';
+      runner.className = 'omni-chain-runner';
+      runner.setAttribute('role', 'region');
+      runner.setAttribute('aria-label', 'Stepped chain in progress');
+      shadowRoot.appendChild(runner);
+    }
+
+    runner.textContent = '';
+
+    const head = document.createElement('div');
+    head.className = 'omni-chain-runner-head';
+
+    const badge = document.createElement('span');
+    badge.className = 'omni-runner-badge';
+    badge.textContent = '⛓️ Chain';
+    head.appendChild(badge);
+
+    const title = document.createElement('strong');
+    title.className = 'omni-runner-title';
+    title.textContent = step.chainTitle;
+    head.appendChild(title);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'omni-runner-close';
+    closeBtn.title = 'Stop chain';
+    closeBtn.setAttribute('aria-label', 'Stop chain');
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => endChain());
+    head.appendChild(closeBtn);
+
+    runner.appendChild(head);
+
+    const stepRow = document.createElement('div');
+    stepRow.className = 'omni-runner-step-row';
+
+    const stepNum = document.createElement('span');
+    stepNum.className = 'omni-runner-step-num';
+    stepNum.textContent = 'Step ' + (step.index + 1) + ' of ' + step.total;
+    stepRow.appendChild(stepNum);
+
+    if (step.stepTitle) {
+      const stepName = document.createElement('span');
+      stepName.className = 'omni-runner-step-name';
+      stepName.textContent = step.stepTitle;
+      stepRow.appendChild(stepName);
+    }
+
+    runner.appendChild(stepRow);
+
+    const progress = document.createElement('div');
+    progress.className = 'omni-runner-progress';
+    for (let i = 0; i < step.total; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'omni-runner-dot' + (i < step.index ? ' done' : i === step.index ? ' active' : '');
+      progress.appendChild(dot);
+    }
+    runner.appendChild(progress);
+
+    const hint = document.createElement('div');
+    hint.className = 'omni-runner-hint';
+    const comp = window.ChatbotAdapters && window.ChatbotAdapters.findActiveComposer ? window.ChatbotAdapters.findActiveComposer() : null;
+    if (comp) {
+      hint.textContent = 'Ready to insert into active composer.';
+    } else {
+      hint.textContent = 'Click inside a text box, then press Next step.';
+      hint.classList.add('is-warn');
+    }
+    runner.appendChild(hint);
+
+    const actions = document.createElement('div');
+    actions.className = 'omni-runner-actions';
+
+    const stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'omni-btn omni-btn-ghost omni-btn-sm';
+    stopBtn.textContent = 'Stop';
+    stopBtn.addEventListener('click', () => endChain());
+    actions.appendChild(stopBtn);
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'omni-btn omni-btn-primary omni-btn-sm';
+    nextBtn.textContent = 'Next step →';
+    nextBtn.addEventListener('click', () => {
+      const currentComp = window.ChatbotAdapters && window.ChatbotAdapters.findActiveComposer ? window.ChatbotAdapters.findActiveComposer() : null;
+      continueChain({ target: currentComp ? currentComp.element : null });
+    });
+    actions.appendChild(nextBtn);
+
+    runner.appendChild(actions);
+  }
+
+  /** Chain rows and workspace switches chosen in the slash menu or palette. */
+  function handleChainAction(kind, id, ctx) {
+    const c = ctx || {};
+    if (kind === 'chain') startChain(id, c);
+    else if (kind === 'next') continueChain(c);
+    else if (kind === 'end') endChain(c);
+    else if (kind === 'workspace') switchWorkspace(id);
+  }
+
+  function switchWorkspace(id) {
+    const store = window.OmniStore;
+    if (!store || !store.setActiveWorkspace) return;
+    store
+      .setActiveWorkspace(id || '')
+      .then(() => {
+        const ws = id ? store.getWorkspace(id) : null;
+        showToast(ws ? 'Workspace: ' + ws.name + '.' : 'No workspace. Fields fill as usual.', 'ok');
+      })
+      .catch((err) => {
+        showToast((err && err.message) || 'Could not switch workspace.', 'info');
+      });
   }
 
   /**
@@ -461,10 +739,6 @@
 
   function handleMessage(request, sender, sendResponse) {
     switch (request && request.action) {
-      case 'ping':
-        sendResponse({ ok: true, version: 2, site: window.ChatbotAdapters.siteLabel() });
-        return false;
-
       case 'open_palette':
         if (disabledHere) {
           sendResponse({ ok: false, reason: 'site-disabled' });
@@ -503,6 +777,31 @@
 
       case 'apply_modifier':
         runModifier(request.modifierId, { text: request.text });
+        sendResponse({ ok: true });
+        return false;
+
+      case 'open_compare': {
+        if (disabledHere) {
+          sendResponse({ ok: false, reason: 'site-disabled' });
+          return false;
+        }
+        const prompt = request.prompt || (window.OmniStore && window.OmniStore.getById(request.promptId));
+        if (!prompt) {
+          sendResponse({ ok: false, reason: 'unknown-prompt' });
+          return false;
+        }
+        runPrompt(prompt, { compareMode: true });
+        sendResponse({ ok: true });
+        return false;
+      }
+
+      // The popup's "Run chain" button. Starts step 1 here, where the page is.
+      case 'start_chain':
+        if (disabledHere) {
+          sendResponse({ ok: false, reason: 'site-disabled' });
+          return false;
+        }
+        startChain(request.chainId, {});
         sendResponse({ ok: true });
         return false;
 
@@ -567,7 +866,9 @@
       {
         triggerChar: settings.slashTriggerChar,
         enabled: settings.slashEnabled && !disabledHere,
-        maxResults: settings.maxSlashResults
+        maxResults: settings.maxSlashResults,
+        getActiveChain,
+        onChainAction: handleChainAction
       }
     );
 
@@ -590,7 +891,9 @@
           if (id === 'save-as-prompt') {
             saveAsPrompt({ target: ctx && ctx.target, selection: ctx && ctx.selection });
           }
-        }
+        },
+        getActiveChain,
+        onChainAction: handleChainAction
       },
       {
         hotkey: settings.paletteHotkey,
@@ -604,22 +907,82 @@
       chrome.runtime.onMessage.addListener(handleMessage);
     }
 
-    // A small surface for the offline sandbox page and for debugging.
-    window.OmniPrompt = {
-      version: 2,
-      runPrompt,
-      runModifier,
-      openPalette: () => window.CommandPalette.open(),
-      getContext: capturePageContext,
-      isDisabledHere: () => disabledHere,
-      isReady: () => window.OmniStore.isReady()
-    };
-
     // Now pick up the user's stored prompts and settings.
     await window.OmniStore.init();
     window.OmniStore.watchStorage();
     window.OmniStore.onChange(() => applySettings());
     applySettings();
+    checkPendingCompare();
+  }
+
+  async function checkPendingCompare() {
+    if (!chrome.runtime || !chrome.runtime.sendMessage) return;
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'get_pending_compare' }, (res) => {
+          void chrome.runtime.lastError;
+          resolve(res || null);
+        });
+      });
+      if (!response || !response.ok || !response.job) return;
+      const job = response.job;
+      const startTime = Date.now();
+      const timeoutMs = 12000;
+      const checkInterval = 250;
+
+      async function attemptInsert() {
+        const target =
+          window.ChatbotAdapters && window.ChatbotAdapters.getInputElement
+            ? window.ChatbotAdapters.getInputElement()
+            : null;
+
+        if (!target) {
+          if (Date.now() - startTime < timeoutMs) {
+            setTimeout(attemptInsert, checkInterval);
+            return;
+          }
+          showToast('OmniPrompt: Composer not found. Check if sign-in is required.', 'warn');
+          chrome.runtime.sendMessage({
+            action: 'compare_status',
+            success: false,
+            targetId: job.targetId,
+            message: 'Composer not found or sign-in required'
+          });
+          return;
+        }
+
+        const inserted = await window.ChatbotAdapters.insert(job.text, { mode: 'replace' });
+        const landed = window.ChatbotAdapters.landingCheck ? window.ChatbotAdapters.landingCheck() : true;
+
+        if (inserted && landed) {
+          if (job.autoSend && window.ChatbotAdapters.submit) {
+            setTimeout(() => {
+              window.ChatbotAdapters.submit();
+            }, 300);
+          } else {
+            showToast('OmniPrompt: Prompt inserted for comparison.', 'ok');
+          }
+          chrome.runtime.sendMessage({
+            action: 'compare_status',
+            success: true,
+            targetId: job.targetId,
+            message: 'Inserted successfully'
+          });
+        } else {
+          showToast('OmniPrompt: Insertion failed. Your prompt was kept ready.', 'warn');
+          chrome.runtime.sendMessage({
+            action: 'compare_status',
+            success: false,
+            targetId: job.targetId,
+            message: 'Landing check failed'
+          });
+        }
+      }
+
+      attemptInsert();
+    } catch (e) {
+      // Ignored
+    }
   }
 
   if (document.readyState === 'loading') {

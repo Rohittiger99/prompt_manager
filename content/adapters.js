@@ -679,6 +679,25 @@ const ChatbotAdapters = (() => {
     }
   ];
 
+  /**
+   * Targets for the Pro "Compare across AIs" feature.
+   * Every target has a known fresh-chat URL and a working SITES adapter above.
+   */
+  const COMPARE_TARGETS = [
+    { id: 'chatgpt', label: 'ChatGPT', host: 'chatgpt.com', url: 'https://chatgpt.com/', icon: '🤖' },
+    { id: 'claude', label: 'Claude', host: 'claude.ai', url: 'https://claude.ai/new', icon: '🎭' },
+    { id: 'gemini', label: 'Gemini', host: 'gemini.google.com', url: 'https://gemini.google.com/app', icon: '✨' },
+    { id: 'copilot', label: 'Copilot', host: 'copilot.microsoft.com', url: 'https://copilot.microsoft.com/', icon: '🪟' },
+    { id: 'perplexity', label: 'Perplexity', host: 'perplexity.ai', url: 'https://www.perplexity.ai/', icon: '🔍' },
+    { id: 'deepseek', label: 'DeepSeek', host: 'deepseek.com', url: 'https://chat.deepseek.com/', icon: '🐋' },
+    { id: 'grok', label: 'Grok', host: 'grok.com', url: 'https://grok.com/', icon: '⚡' },
+    { id: 'mistral', label: 'Le Chat', host: 'chat.mistral.ai', url: 'https://chat.mistral.ai/chat', icon: '🌪️' },
+    { id: 'metaai', label: 'Meta AI', host: 'meta.ai', url: 'https://meta.ai/', icon: '🌐' },
+    { id: 'qwen', label: 'Qwen', host: 'chat.qwen.ai', url: 'https://chat.qwen.ai/', icon: '💬' },
+    { id: 'kimi', label: 'Kimi', host: 'kimi.moonshot.cn', url: 'https://kimi.moonshot.cn/', icon: '🌙' },
+    { id: 'poe', label: 'Poe', host: 'poe.com', url: 'https://poe.com/', icon: '🪶' }
+  ];
+
   function hostMatches(host, pattern) {
     return host === pattern || host.slice(-(pattern.length + 1)) === '.' + pattern;
   }
@@ -1083,6 +1102,7 @@ const ChatbotAdapters = (() => {
     siteLabel,
     currentSite,
     SITES,
+    COMPARE_TARGETS,
 
     // reading
     readValue,
@@ -1098,12 +1118,7 @@ const ChatbotAdapters = (() => {
     submit,
     writeText,
     replaceBeforeCaret,
-    placeCaretAtEnd,
-
-    // kept for older call sites
-    getCurrentInputValue() {
-      return readValue(getInputElement());
-    }
+    placeCaretAtEnd
   };
 })();
 
