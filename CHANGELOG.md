@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Backup and sync are now on one page, **Backup & sync**: sync, restore points, export, import and reset. The Chrome profile and folder sync options moved there from Settings.
+- Automatic backups are called restore points. The export page no longer has the "include built-ins" tick box; built-ins ship with the extension.
+- Restoring an earlier version of a prompt is free. It is your own data, and restoring a whole backup was already free.
+- The Plan page is shorter: your own usage at the top, a Free card and a Pro card with one button, the licence key tucked away, four short answers about paying, and the full comparison behind one click. On Pro it lists what is unlocked, with a link into each part.
+- The upgrade dialog lists three benefits, led by the one you reached for, and links to the full list.
+
 ### Added
 - Compare across AIs (Pro): Send a prompt to up to 6 AI composers simultaneously (ChatGPT, Claude, Gemini, Copilot, Perplexity, DeepSeek, Grok, Mistral, Meta AI, Qwen, Kimi, Poe) in tiled side-by-side windows or background tabs, with zero transcript scraping.
 - Smart templates (Pro): Conditionals (`{{#if}}...{{#else}}...{{/if}}`), date arithmetic (`{{date+7d}}`, `{{date-2w}}`, `{{date+1m}}`, `{{date+1y}}` with month-end and leap-year clamping), required fields (`{{field!}}`), and repeatable blocks (`{{#repeat item}}...{{/repeat}}`).
@@ -16,8 +23,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Optional `<all_urls>` permission: "Use OmniPrompt on every website" toggle in Settings and Welcome page.
 - On-demand injection: `activeTab` permission enables `Ctrl+Shift+K` and right-click context menu modifiers to work immediately on any page.
 - Per-site dynamic enablement: "Turn on for this site" banner in toolbar popup for uncovered websites, plus custom website link input in Settings.
-- View and copy version history for Free users (one-click restore remains Pro).
+- Version history with one-click restore is free for everyone.
 - Remote code regression test asserting packaged files contain no remote scripts, stylesheets, fonts, iframes, eval, or dynamic imports.
+
+### Fixed
+- Custom categories, custom modifiers and site rules could be wiped when another tab or the popup changed storage, then saved back as empty. Every surface now reloads the full set of keys.
+- Custom modifiers and site rules now travel with Chrome sync and folder sync, and deleting one on a computer removes it on the others. Importing a backup no longer lets an old deletion record remove a restored workspace, chain, modifier or rule.
+- Compare across AIs from the in-page form did nothing. It now opens the AIs, waits up to 30 seconds for each chat box, checks the text arrived before sending, copies it to the clipboard when it cannot, and shows a summary in the tab that started the run, such as "inserted in 2 of 3".
+- Compare windows open on the screen you started from and are never narrower than 520 pixels.
+- The chain runner always said "Click inside a text box" because it called an adapter function that does not exist.
+- The Site rules permission banner and its "Turn on for this site" button threw an error. Presets now use hosts that match the real apps (app.slack.com, *.notion.so, outlook.office.com).
+- Alt+C (compare) in the palette did nothing on macOS, where Option+C types "ç".
+- Compare across AIs still did nothing with Pro active. "Run comparison" inserted into the current page instead of opening the AIs, the target picker failed to draw (it read the remembered targets as a list when they arrive later), the palette's Compare… opened a plain form, and the library page's Compare dialog never opened. The library dialog now expands context blocks and lets you edit the text, so blanks can be filled before starting. Kimi opens kimi.com and Meta AI opens www.meta.ai, the pages the chat-box finder knows. Chain steps no longer show Compare.
+- Compare now opens new tabs in the current window by default. Tiled windows are still one click away in the same dialog.
+- Dates from {{date}} and {{date+7d}} are now YYYY-MM-DD, as documented, instead of a locale format where 10/8 can mean October or August.
+
+### Improved
+- Keyboard: Tab stays inside the palette, the fill-in form and every dialog on the library page; focus returns to the button that opened a dialog; Esc closes the Compare dialog.
+- The library page supports the browser's Back and Forward buttons between views, and a reload keeps the current view.
+- Library search waits for a pause in typing before redrawing, so large libraries stay responsive.
+- The popup asks for confirmation in its own dialog. A native confirm could close the popup and lose the answer.
+- macOS key names (⌘S, ⌘↵, ⌥C, ⌘V) where the page used Ctrl or Alt.
+- Windows High Contrast mode keeps focus rings and panel edges visible. Muted text in the light theme now meets WCAG AA contrast.
+- Long messages stay on screen long enough to read. The fill-in form fits narrow windows.
+- The Opera add-ons store is excluded like the Chrome and Edge stores. The manifest declares Chrome 111 as the minimum, the first version with every CSS feature the pages use.
 
 ### Changed
 - Free/Pro split: Folders, tags, bulk edit, tidy-up, and remembered short answers moved to the Free tier.

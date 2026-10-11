@@ -217,7 +217,7 @@ const CommandPalette = (() => {
       '<div><span><span class="omni-kbd">↑</span><span class="omni-kbd">↓</span> move</span>' +
       '<span><span class="omni-kbd">↵</span> insert</span>' +
       '<span><span class="omni-kbd">⇧↵</span> insert &amp; send</span>' +
-      '<span><span class="omni-kbd">Alt+C</span> compare</span></div>' +
+      '<span><span class="omni-kbd">' + compareKeyLabel() + '</span> compare</span></div>' +
       '<div><span><span class="omni-kbd">Esc</span> close</span></div>' +
       '</div>' +
       '</div>';
@@ -234,6 +234,16 @@ const CommandPalette = (() => {
       refresh(inputEl.value);
     });
     inputEl.addEventListener('keydown', handlePaletteKeydown);
+    const modalEl = backdrop.querySelector('.omni-palette-modal');
+    modalEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') trapTab(e, modalEl);
+      // Esc from a preview button closes too, not only from the search box.
+      else if (e.key === 'Escape' && e.target !== inputEl) {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      }
+    });
 
     backdrop.addEventListener('mousedown', (e) => {
       if (e.target === backdrop) close();
@@ -647,7 +657,7 @@ const CommandPalette = (() => {
       '</span><span>' +
       escapeHtml(head) +
       '</span>' +
-      (row.kind === 'prompt' ? '<button type="button" class="omni-field-action omni-pv-compare-act" id="omni-pv-compare-act" title="Compare in several AIs (Alt+C)">Compare…</button>' : '') +
+      (row.kind === 'prompt' ? '<button type="button" class="omni-field-action omni-pv-compare-act" id="omni-pv-compare-act" title="Compare in several AIs (' + compareKeyLabel() + ')">Compare…</button>' : '') +
       '</div>' +
       '<div class="omni-pv-title">' +
       escapeHtml(row.title) +
@@ -718,11 +728,42 @@ const CommandPalette = (() => {
      Keyboard
      ===================================================================== */
 
+  function compareKeyLabel() {
+    const store = window.OmniStore;
+    return store && store.isMacPlatform && store.isMacPlatform() ? '⌥C' : 'Alt+C';
+  }
+
+  /** Keep Tab inside the open palette, as aria-modal promises. */
+  function trapTab(e, container) {
+    if (e.key !== 'Tab' || !container) return false;
+    const items = Array.prototype.filter.call(
+      container.querySelectorAll('input, button, select, textarea, [tabindex]:not([tabindex="-1"])'),
+      (n) => !n.disabled && n.offsetParent !== null
+    );
+    if (!items.length) return false;
+    const root = container.getRootNode();
+    const active = root && root.activeElement;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && (active === first || items.indexOf(active) === -1)) {
+      e.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!e.shiftKey && (active === last || items.indexOf(active) === -1)) {
+      e.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
+
   function handlePaletteKeydown(e) {
     // The Enter that confirms an IME search term must not activate a row.
     // Safari reports it as keyCode 229 with isComposing already false.
     if (e.isComposing || e.keyCode === 229) return;
-    if (e.altKey && (e.key === 'c' || e.key === 'C')) {
+    // e.code, not e.key: on macOS Option+C types "ç".
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyC') {
       if (!rows.length) return;
       e.preventDefault();
       activateCompare(selectedIndex);

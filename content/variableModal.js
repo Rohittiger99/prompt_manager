@@ -109,8 +109,8 @@ const VariableModal = (() => {
       '</div>' +
       '<div class="omni-compare-targets" id="omni-compare-targets"></div>' +
       '<div class="omni-compare-options">' +
-      '<label class="omni-compare-opt"><input type="radio" name="omni-compare-layout" value="window" checked /> Tiled windows</label>' +
-      '<label class="omni-compare-opt"><input type="radio" name="omni-compare-layout" value="tabs" /> Tabs</label>' +
+      '<label class="omni-compare-opt"><input type="radio" name="omni-compare-layout" value="tabs" checked /> New tabs</label>' +
+      '<label class="omni-compare-opt"><input type="radio" name="omni-compare-layout" value="window" /> Tiled windows</label>' +
       '<label class="omni-compare-opt"><input type="checkbox" id="omni-compare-autosend" /> Send automatically in each tab</label>' +
       '</div>' +
       '<div class="omni-compare-actions">' +
@@ -164,6 +164,28 @@ const VariableModal = (() => {
         e.stopPropagation();
         if (onBack) goBack();
         else close();
+        return;
+      }
+      // aria-modal: Tab cycles inside the form instead of reaching the page.
+      if (e.key === 'Tab') {
+        const modal = backdrop.querySelector('.omni-variable-modal');
+        const items = Array.prototype.filter.call(
+          modal.querySelectorAll('input, button, select, textarea, [tabindex]:not([tabindex="-1"])'),
+          (n) => !n.disabled && n.offsetParent !== null
+        );
+        if (!items.length) return;
+        const root = modal.getRootNode();
+        const active = root && root.activeElement;
+        const first = items[0];
+        const last = items[items.length - 1];
+        const inside = items.indexOf(active) !== -1;
+        if (e.shiftKey && (active === first || !inside)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (active === last || !inside)) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     document.addEventListener('keydown', escHandler, true);
@@ -245,6 +267,7 @@ const VariableModal = (() => {
   function openWith(prompt, initial, opts) {
     titleEl.textContent = prompt.title;
     sendBtn.style.display = opts.allowSubmit === false ? 'none' : '';
+    compareBtn.style.display = opts.allowCompare === false ? 'none' : '';
     backBtn.style.display = onBack ? '' : 'none';
 
     bodyEl.innerHTML = currentVariables
@@ -255,7 +278,7 @@ const VariableModal = (() => {
     renderTools();
     updatePreview();
 
-    if (opts.compareMode) {
+    if (opts.compareMode && opts.allowCompare !== false) {
       openComparePanel();
     } else {
       closeComparePanel();
@@ -791,22 +814,30 @@ const VariableModal = (() => {
       { id: 'poe', name: 'Poe' }
     ];
 
-    const store = window.OmniStore;
-    const lastTargets = (store && store.getLastCompareTargets && store.getLastCompareTargets()) || ['chatgpt', 'claude', 'gemini'];
-    const activeSet = {};
-    lastTargets.forEach((id) => { activeSet[id] = true; });
-
-    compareTargetsEl.innerHTML = targets.map((t) => {
-      const isChecked = !!activeSet[t.id];
-      return (
-        '<label class="omni-compare-target-label">' +
-        '<input type="checkbox" value="' + escapeHtml(t.id) + '"' + (isChecked ? ' checked' : '') + ' />' +
-        '<span>' + escapeHtml(t.name) + '</span>' +
-        '</label>'
-      );
-    }).join('');
+    compareTargetsEl.innerHTML = targets.map((t) => (
+      '<label class="omni-compare-target-label">' +
+      '<input type="checkbox" value="' + escapeHtml(t.id) + '" />' +
+      '<span>' + escapeHtml(t.label || t.name || t.id) + '</span>' +
+      '</label>'
+    )).join('');
 
     const boxes = compareTargetsEl.querySelectorAll('input[type="checkbox"]');
+
+    // The last choice is read from storage, so it arrives a tick later.
+    const setChecked = (ids) => {
+      const wanted = {};
+      (Array.isArray(ids) ? ids : []).forEach((id) => { wanted[id] = true; });
+      for (let i = 0; i < boxes.length; i++) boxes[i].checked = !!wanted[boxes[i].value];
+    };
+    const fallback = ['chatgpt', 'claude', 'gemini'];
+    setChecked(fallback);
+    const store = window.OmniStore;
+    if (store && store.getLastCompareTargets) {
+      Promise.resolve(store.getLastCompareTargets())
+        .then((ids) => setChecked(Array.isArray(ids) && ids.length ? ids : fallback))
+        .catch(() => { /* keep the fallback selection */ });
+    }
+
     for (let i = 0; i < boxes.length; i++) {
       boxes[i].addEventListener('change', (e) => {
         const checkedBoxes = compareTargetsEl.querySelectorAll('input[type="checkbox"]:checked');
@@ -863,7 +894,7 @@ const VariableModal = (() => {
     }
 
     const layoutRadio = comparePanel ? comparePanel.querySelector('input[name="omni-compare-layout"]:checked') : null;
-    const layout = layoutRadio ? layoutRadio.value : 'window';
+    const layout = layoutRadio ? layoutRadio.value : 'tabs';
     const autoSendCb = comparePanel ? comparePanel.querySelector('#omni-compare-autosend') : null;
     const autoSend = autoSendCb ? !!autoSendCb.checked : false;
 

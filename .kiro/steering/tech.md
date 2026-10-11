@@ -63,7 +63,10 @@ Globals: `DEFAULT_PROMPTS`, `OmniTemplate`, `OmniStore`, `OmniModifiers`, `OmniI
 ## Messaging
 - Messages are `{ action: 'snake_case', ...payload }`, dispatched with `switch (request && request.action)`.
 - Background actions: `relay_to_active_tab`, `open_editor_with_draft`, `broadcast_settings`, `inject_into_tab`, `start_compare`, `get_pending_compare`, `compare_status`.
-- Content actions: `open_palette`, `insert_prompt`, `apply_modifier`, `save_as_prompt`, `settings_changed`, `start_chain`.
+- Content actions: `open_palette`, `insert_prompt`, `apply_modifier`, `save_as_prompt`, `settings_changed`, `start_chain`, `open_compare`, `compare_summary` (the worker tells the tab or extension page that started a Compare run how it went).
+- Compare jobs stay in session storage until the target tab acknowledges them with `compare_status`, so a reload inside the 2-minute TTL can retry. The run itself is `omni.compareRun.<runId>`.
+- Keyboard shortcuts: match letters on `e.code` (`KeyK`, `KeyC`), never `e.key`, because macOS Option remaps `e.key`. Show `⌘`/`⌥` labels when `OmniStore.isMacPlatform()`.
+- Dates in templates use `OmniTemplate.localIsoDate` (YYYY-MM-DD, local clock). Do not use `toISOString` (UTC) or `toLocaleDateString` (ambiguous).
 - Return `true` from the listener only when `sendResponse` is called asynchronously.
 
 ## Network and security

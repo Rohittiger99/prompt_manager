@@ -28,5 +28,7 @@ Code: caret is the default insert mode; no `execCommand('delete')`; no marker no
 
 Repo hygiene: no root files starting with `_` or `scratch`, or ending in `.tmp`. Clean up any temporary files you create.
 
+Section 39 (final audit regressions) checks: storage reload keeps custom categories, modifiers and rules; modifiers and rules sync with tombstones; folder sync merges rules; compare message fields and landing checks; the chain runner uses real adapter functions; palette Alt+C uses `e.code`; every `store.*()` call in options.js and popup.js exists; the popup has no `window.confirm`; store-page excludes match the worker; dates are YYYY-MM-DD.
+
 ## When you change behaviour
 Update README.md, PRIVACY.md, CHROMEWEBSTORE.md and the welcome page in the same change if they describe it, and keep claims literally true of the code.

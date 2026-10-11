@@ -80,7 +80,7 @@ ORGANIZATION & CUSTOMIZATION
 • Import & Export: Backup your library to JSON, or easily import prompt collections from CSV, Markdown, text, and other prompt tools.
 
 PRICING
-• Free, forever: every insertion feature, all 136 built-in prompts, 20 prompts of your own, variables and dropdowns, modifiers, automatic backups and restoring them, folders and tags, bulk edit, tidy-up, remembered answers, viewing and copying version history, import and export. No credit card, no account.
+• Free, forever: every insertion feature, all 136 built-in prompts, 20 prompts of your own, variables and dropdowns, modifiers, automatic backups and restoring them, folders and tags, bulk edit, tidy-up, remembered answers, version history with one-click restore, Chrome profile sync, import and export. No credit card, no account.
 • Pro, $25 once:
   – Unlimited prompts of your own.
   – Compare across AIs: send a prompt to up to 6 AI composers simultaneously (ChatGPT, Claude, Gemini, Copilot, Perplexity, DeepSeek) in tiled windows or tabs.
@@ -90,8 +90,8 @@ PRICING
   – Client workspaces: switch client and every name, tone and brief fills in for that client.
   – Saved value sets: refill a form in one click under a named set.
   – Stepped chains: run a sequence of prompts one step at a time. You decide when to move on; nothing is sent for you.
-  – Folder sync: keep your library in a folder you choose, such as Dropbox or OneDrive, and share it between computers. No account and no server of ours.
-  – One-click restore for any of the last 20 versions of a prompt, and context blocks ({{@client-brief}} drops one saved prompt into another).
+  – Folder sync: keep your library in a folder you choose, such as Dropbox or OneDrive, and share it between computers with no size limit. No account and no server of ours.
+  – Context blocks ({{@client-brief}} drops one saved prompt into another).
   Future updates included. No subscription.
 • Over the free limit, nothing is taken away. Every prompt keeps working and exporting.
 

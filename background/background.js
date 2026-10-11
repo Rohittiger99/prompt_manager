@@ -44,7 +44,13 @@ const SAVE_SELECTION_ID = 'omniprompt-save-selection';
  * Menu registrations persist across an extension update, so creating the same
  * ids again without clearing them fails.
  */
+let menuQueue = Promise.resolve();
 function buildContextMenus() {
+  menuQueue = menuQueue.then(buildContextMenusNow, buildContextMenusNow);
+  return menuQueue;
+}
+
+function buildContextMenusNow() {
   return new Promise((resolve) => {
     chrome.contextMenus.removeAll(() => {
       void chrome.runtime.lastError;
@@ -289,7 +295,8 @@ function injectIntoOpenTabs() {
 const EXCLUDE_MATCHES = [
   '*://chrome.google.com/webstore/*',
   '*://chromewebstore.google.com/*',
-  '*://microsoftedge.microsoft.com/addons/*'
+  '*://microsoftedge.microsoft.com/addons/*',
+  '*://addons.opera.com/*'
 ];
 
 const DYNAMIC_EVERYWHERE_ID = 'omniprompt-everywhere';
@@ -446,8 +453,9 @@ chrome.runtime.onInstalled.addListener((details) => {
       }
     })
     .catch(() => {
-      // Never leave the worker in a state where the menu is missing.
+      // Never leave the worker without its menu or its opt-in site scripts.
       buildContextMenus();
+      reconcileDynamicScripts();
     });
 });
 
@@ -536,116 +544,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case 'start_compare':
-      (async () => {
-        await OmniStore.init();
-        if (!OmniStore.isPro()) {
-          sendResponse({ ok: false, error: 'PRO_REQUIRED' });
-          return;
-        }
-
-        const targets = Array.isArray(request.targets) ? request.targets.slice(0, 6) : [];
-        if (!targets.length) {
-          sendResponse({ ok: false, error: 'No targets chosen.' });
-          return;
-        }
-
-        const allTargets = OmniStore.getCompareTargets ? OmniStore.getCompareTargets() : [];
-        const text = String(request.text || '');
-        const autoSend = !!request.autoSend;
-        const layout = request.layout === 'tabs' ? 'tabs' : 'tiled';
-        const screenW = Math.max(800, Number(request.screenWidth) || 1440);
-        const screenH = Math.max(600, Number(request.screenHeight) || 900);
-
-        if (OmniStore.setLastCompareTargets) {
-          await OmniStore.setLastCompareTargets(targets);
-        }
-
-        const chosen = [];
-        targets.forEach((tid) => {
-          for (let i = 0; i < allTargets.length; i++) {
-            if (allTargets[i].id === tid) {
-              chosen.push(allTargets[i]);
-              break;
-            }
-          }
-        });
-
-        const N = chosen.length;
-        const openedTabs = [];
-
-        if (layout === 'tiled') {
-          const cols = N <= 3 ? N : Math.ceil(N / 2);
-          const rows = N <= 3 ? 1 : 2;
-          const colW = Math.floor(screenW / cols);
-          const rowH = Math.floor(screenH / rows);
-
-          for (let i = 0; i < N; i++) {
-            const target = chosen[i];
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const left = Math.round(col * colW);
-            const top = Math.round(row * rowH);
-            const width = Math.round(colW);
-            const height = Math.round(rowH);
-
-            const win = await new Promise((resolve) => {
-              chrome.windows.create(
-                {
-                  url: target.url,
-                  left,
-                  top,
-                  width,
-                  height,
-                  focused: i === 0
-                },
-                (w) => {
-                  void chrome.runtime.lastError;
-                  resolve(w || null);
-                }
-              );
-            });
-
-            if (win && win.tabs && win.tabs[0]) {
-              const tabId = win.tabs[0].id;
-              openedTabs.push(tabId);
-              await sessionSet(COMPARE_JOB_PREFIX + tabId, {
-                tabId,
-                targetId: target.id,
-                targetLabel: target.label,
-                text,
-                autoSend,
-                createdAt: Date.now()
-              });
-            }
-          }
-        } else {
-          for (let i = 0; i < N; i++) {
-            const target = chosen[i];
-            const tab = await new Promise((resolve) => {
-              chrome.tabs.create({ url: target.url, active: i === 0 }, (t) => {
-                void chrome.runtime.lastError;
-                resolve(t || null);
-              });
-            });
-
-            if (tab && typeof tab.id === 'number') {
-              openedTabs.push(tab.id);
-              await sessionSet(COMPARE_JOB_PREFIX + tab.id, {
-                tabId: tab.id,
-                targetId: target.id,
-                targetLabel: target.label,
-                text,
-                autoSend,
-                createdAt: Date.now()
-              });
-            }
-          }
-        }
-
-        sendResponse({ ok: true, count: openedTabs.length });
-      })();
+      startCompare(request, sender).then(sendResponse);
       return true;
 
+    // A compare tab asks for its text. The job stays until that tab reports
+    // back (compare_status), so a reload inside the TTL can try again.
     case 'get_pending_compare':
       (async () => {
         const tabId = sender.tab && sender.tab.id;
@@ -659,8 +562,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendResponse({ ok: false });
           return;
         }
-        await sessionRemove(key);
         if (Date.now() - (job.createdAt || 0) > COMPARE_TTL_MS) {
+          await sessionRemove(key);
+          await recordCompareResult(job, false, 'the page took too long to open');
           sendResponse({ ok: false, expired: true });
           return;
         }
@@ -669,8 +573,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case 'compare_status':
-      sendResponse({ ok: true });
-      return false;
+      (async () => {
+        const tabId = sender.tab && sender.tab.id;
+        if (typeof tabId === 'number') {
+          const job = await sessionGet(COMPARE_JOB_PREFIX + tabId);
+          await sessionRemove(COMPARE_JOB_PREFIX + tabId);
+          if (job) await recordCompareResult(job, !!request.success, String(request.message || ''));
+        }
+        sendResponse({ ok: true });
+      })();
+      return true;
 
     default:
       return false;
@@ -678,10 +590,168 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /* =====================================================================
+   Compare across AIs (Pro)
+   ===================================================================== */
+
+const COMPARE_MIN_W = 520;
+const COMPARE_MIN_H = 420;
+
+/**
+ * Lay N windows out on the screen the run started from. Columns never get
+ * narrower than Chrome's usable minimum; with too many for one row they wrap.
+ */
+function tileRects(n, area) {
+  const maxCols = Math.max(1, Math.floor(area.width / COMPARE_MIN_W));
+  const cols = Math.max(1, Math.min(n, n <= 3 ? n : Math.ceil(n / 2), maxCols));
+  const rows = Math.ceil(n / cols);
+  const w = Math.max(COMPARE_MIN_W, Math.floor(area.width / cols));
+  const h = Math.max(COMPARE_MIN_H, Math.floor(area.height / rows));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    out.push({
+      left: Math.round(area.left + Math.min(col * w, Math.max(0, area.width - w))),
+      top: Math.round(area.top + Math.min(row * h, Math.max(0, area.height - h))),
+      width: w,
+      height: h
+    });
+  }
+  return out;
+}
+
+function createWindow(opts) {
+  return new Promise((resolve) => {
+    chrome.windows.create(opts, (w) => {
+      if (chrome.runtime.lastError) {
+        // Some window managers reject a position; open it unplaced instead.
+        chrome.windows.create({ url: opts.url, focused: opts.focused }, (w2) => {
+          void chrome.runtime.lastError;
+          resolve(w2 || null);
+        });
+        return;
+      }
+      resolve(w || null);
+    });
+  });
+}
+
+function createTab(opts) {
+  return new Promise((resolve) => {
+    chrome.tabs.create(opts, (t) => {
+      void chrome.runtime.lastError;
+      resolve(t || null);
+    });
+  });
+}
+
+async function startCompare(request, sender) {
+  await self.OmniStore.init();
+  if (!self.OmniStore.isPro()) return { ok: false, error: 'PRO_REQUIRED' };
+
+  const text = String(request.text || '');
+  if (!text.trim()) return { ok: false, error: 'There is no text to send.' };
+
+  const all = self.OmniStore.getCompareTargets ? self.OmniStore.getCompareTargets() : [];
+  const wanted = Array.isArray(request.targets) ? request.targets : [];
+  const chosen = [];
+  wanted.forEach((id) => {
+    const t = all.find((x) => x.id === id);
+    if (t && chosen.indexOf(t) === -1 && chosen.length < 6) chosen.push(t);
+  });
+  if (!chosen.length) return { ok: false, error: 'Choose at least one AI.' };
+
+  if (self.OmniStore.setLastCompareTargets) {
+    await self.OmniStore.setLastCompareTargets(chosen.map((t) => t.id));
+  }
+
+  const autoSend = !!request.autoSend;
+  // New tabs unless the page asked for tiled windows.
+  const layout = request.layout === 'tiled' ? 'tiled' : 'tabs';
+  const runId = 'run-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const originTabId = sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
+  const area = {
+    left: Number(request.screenLeft) || 0,
+    top: Number(request.screenTop) || 0,
+    width: Math.max(COMPARE_MIN_W, Number(request.screenWidth) || 1440),
+    height: Math.max(COMPARE_MIN_H, Number(request.screenHeight) || 900)
+  };
+
+  const opened = [];
+  const rects = layout === 'tiled' ? tileRects(chosen.length, area) : [];
+  for (let i = 0; i < chosen.length; i++) {
+    const target = chosen[i];
+    let tabId = null;
+    if (layout === 'tiled') {
+      const win = await createWindow(Object.assign({ url: target.url, focused: i === 0, type: 'normal' }, rects[i]));
+      if (win && win.tabs && win.tabs[0]) tabId = win.tabs[0].id;
+    } else {
+      const tab = await createTab({ url: target.url, active: i === 0 });
+      if (tab && typeof tab.id === 'number') tabId = tab.id;
+    }
+    if (typeof tabId !== 'number') continue;
+    opened.push({ id: target.id, label: target.label });
+    await sessionSet(COMPARE_JOB_PREFIX + tabId, {
+      tabId,
+      runId,
+      targetId: target.id,
+      targetLabel: target.label,
+      text,
+      autoSend,
+      createdAt: Date.now()
+    });
+  }
+
+  if (!opened.length) return { ok: false, error: 'The browser did not open any windows.' };
+
+  await sessionSet(COMPARE_RUN_PREFIX + runId, {
+    runId,
+    originTabId,
+    total: opened.length,
+    labels: opened.reduce((m, t) => ((m[t.id] = t.label), m), {}),
+    results: {},
+    createdAt: Date.now()
+  });
+  return { ok: true, count: opened.length, runId };
+}
+
+/**
+ * Note one tab's outcome. When every tab has reported, tell the page that
+ * started the run (a content script or an extension page) how it went.
+ */
+let compareQueue = Promise.resolve();
+function recordCompareResult(job, success, message) {
+  compareQueue = compareQueue.then(async () => {
+    if (!job || !job.runId) return;
+    const key = COMPARE_RUN_PREFIX + job.runId;
+    const run = await sessionGet(key);
+    if (!run) return;
+    run.results[job.targetId] = { success, message };
+    if (Object.keys(run.results).length < run.total) {
+      await sessionSet(key, run);
+      return;
+    }
+    await sessionRemove(key);
+    const failed = Object.keys(run.results)
+      .filter((id) => !run.results[id].success)
+      .map((id) => ({ label: run.labels[id] || id, message: run.results[id].message }));
+    const summary = { action: 'compare_summary', runId: run.runId, total: run.total, failed };
+    if (typeof run.originTabId === 'number') sendToTab(run.originTabId, summary);
+    try {
+      chrome.runtime.sendMessage(summary, () => void chrome.runtime.lastError);
+    } catch (e) {
+      /* no extension page is listening */
+    }
+  });
+  return compareQueue.catch(() => {});
+}
+
+/* =====================================================================
    Session storage helpers for Compare jobs
    ===================================================================== */
 
 const COMPARE_JOB_PREFIX = 'omni.compare.';
+const COMPARE_RUN_PREFIX = 'omni.compareRun.';
 const COMPARE_TTL_MS = 2 * 60 * 1000;
 
 function sessionSet(key, val) {
@@ -715,11 +785,21 @@ function sessionRemove(key) {
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  sessionRemove(COMPARE_JOB_PREFIX + tabId);
+  const key = COMPARE_JOB_PREFIX + tabId;
+  sessionGet(key).then((job) => {
+    if (!job) return;
+    sessionRemove(key);
+    recordCompareResult(job, false, 'the tab was closed');
+  });
 });
 
+// The worker's copy of the store does not watch storage, so reload it first:
+// otherwise a worker that just woke up (or one holding old data) would build
+// the menu from stale modifiers and licence state.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes['omni.customModifiers'] || changes['omni.license'])) {
-    buildContextMenus();
+    self.OmniStore.init({ force: true })
+      .then(() => buildContextMenus())
+      .catch(() => buildContextMenus());
   }
 });

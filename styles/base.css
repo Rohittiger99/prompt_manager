@@ -35,7 +35,7 @@
   /* Text */
   --text: #18181b;
   --text-2: #52525b;
-  --text-3: #71717a;
+  --text-3: #6b6b74;
   --text-inverse: #ffffff;
 
   /* Ink: primary actions and the brand mark */
@@ -818,4 +818,12 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   border-color: var(--accent);
   background: var(--accent-soft);
   box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* Windows High Contrast / forced colours: box-shadow focus rings are removed
+   by the browser there, so draw a real outline instead. */
+@media (forced-colors: active) {
+  input:focus-visible, textarea:focus-visible, select:focus-visible,
+  .switch input:focus-visible + .switch-track { outline: 2px solid Highlight; outline-offset: 1px; }
+  .switch-track { border: 1px solid ButtonText; }
 }

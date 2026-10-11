@@ -245,6 +245,16 @@
       ready,
       context,
       (renderedText, meta) => {
+        // "Run comparison" in the form: open the chosen AIs instead of
+        // writing into this page.
+        if (meta && meta.compare) {
+          startCompareRun(renderedText, meta.compare).then((started) => {
+            if (!started) return;
+            if (window.OmniStore) window.OmniStore.recordUse(prompt.id);
+            explainLockedBlocks(prepared);
+          });
+          return;
+        }
         writeToPage(renderedText, {
           target: opts.target,
           caret: opts.caret,
@@ -402,6 +412,8 @@
         submit: opts.submit,
         allowClipboard: !!settings.clipboardAutofill,
         allowSubmit: true,
+        // A chain runs in this tab, step by step; Compare would break it.
+        allowCompare: false,
         skipWhenComplete: false,
         onBack: opts.onBack,
         seed: carried
@@ -491,9 +503,9 @@
 
     const hint = document.createElement('div');
     hint.className = 'omni-runner-hint';
-    const comp = window.ChatbotAdapters && window.ChatbotAdapters.findActiveComposer ? window.ChatbotAdapters.findActiveComposer() : null;
+    const comp = findComposer();
     if (comp) {
-      hint.textContent = 'Ready to insert into active composer.';
+      hint.textContent = 'The next step goes into the chat box on this page.';
     } else {
       hint.textContent = 'Click inside a text box, then press Next step.';
       hint.classList.add('is-warn');
@@ -515,12 +527,22 @@
     nextBtn.className = 'omni-btn omni-btn-primary omni-btn-sm';
     nextBtn.textContent = 'Next step →';
     nextBtn.addEventListener('click', () => {
-      const currentComp = window.ChatbotAdapters && window.ChatbotAdapters.findActiveComposer ? window.ChatbotAdapters.findActiveComposer() : null;
-      continueChain({ target: currentComp ? currentComp.element : null });
+      continueChain({ target: findComposer() });
     });
     actions.appendChild(nextBtn);
 
     runner.appendChild(actions);
+  }
+
+  /** The text box a chain step will go into: the last one used, else the page's main box. */
+  function findComposer() {
+    const a = window.ChatbotAdapters;
+    if (!a) return null;
+    try {
+      return (a.getRememberedTarget && a.getRememberedTarget()) || (a.getInputElement && a.getInputElement()) || null;
+    } catch (e) {
+      return null;
+    }
   }
 
   /** Chain rows and workspace switches chosen in the slash menu or palette. */
@@ -698,12 +720,14 @@
     toast.style.display = 'flex';
 
     if (toastTimer) window.clearTimeout(toastTimer);
+    // Long messages (a clipboard fallback, a compare summary) need time to read.
+    const visibleMs = Math.max(2800, Math.min(9000, String(message).length * 55));
     toastTimer = window.setTimeout(() => {
       toast.classList.add('omni-toast-hiding');
       window.setTimeout(() => {
         if (toast) toast.style.display = 'none';
       }, 250);
-    }, 2800);
+    }, visibleMs);
   }
 
   /* =====================================================================
@@ -777,6 +801,11 @@
 
       case 'apply_modifier':
         runModifier(request.modifierId, { text: request.text });
+        sendResponse({ ok: true });
+        return false;
+
+      case 'compare_summary':
+        showCompareSummary(request);
         sendResponse({ ok: true });
         return false;
 
@@ -881,6 +910,7 @@
             caret: ctx && ctx.caret,
             selection: ctx && ctx.selection,
             submit: ctx && ctx.submit,
+            compareMode: !!(ctx && ctx.compareMode),
             onBack: ctx && ctx.onBack
           });
         },
@@ -915,8 +945,76 @@
     checkPendingCompare();
   }
 
+  /* =====================================================================
+     Compare across AIs (Pro)
+     ===================================================================== */
+
+  /**
+   * Ask the service worker to open the chosen AIs. The screen geometry comes
+   * from this page because the worker has no `screen`; availLeft/availTop
+   * place the windows on the monitor the user is looking at.
+   */
+  function startCompareRun(text, compare) {
+    const s = window.screen || {};
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          {
+            action: 'start_compare',
+            text,
+            targets: compare.targets || [],
+            layout: compare.layout,
+            autoSend: !!compare.autoSend,
+            screenLeft: typeof s.availLeft === 'number' ? s.availLeft : 0,
+            screenTop: typeof s.availTop === 'number' ? s.availTop : 0,
+            screenWidth: s.availWidth || 1440,
+            screenHeight: s.availHeight || 900
+          },
+          (res) => {
+            void chrome.runtime.lastError;
+            if (res && res.ok) {
+              showToast('Opening ' + res.count + (res.count === 1 ? ' AI' : ' AIs') + '. The text goes into each chat box.', 'ok');
+              resolve(true);
+              return;
+            }
+            const err = res && res.error;
+            showToast(
+              err === 'PRO_REQUIRED'
+                ? 'Compare across AIs is part of OmniPrompt Pro.'
+                : (err || 'Could not open the AIs. Reload the page and try again.'),
+              'warn'
+            );
+            resolve(false);
+          }
+        );
+      } catch (e) {
+        showToast('Could not reach OmniPrompt. Reload the page and try again.', 'warn');
+        resolve(false);
+      }
+    });
+  }
+
+  function sendCompareStatus(job, success, message) {
+    try {
+      chrome.runtime.sendMessage(
+        { action: 'compare_status', runId: job.runId, targetId: job.targetId, success, message },
+        () => void chrome.runtime.lastError
+      );
+    } catch (e) {
+      /* the worker restarted; the toast in this tab already explains */
+    }
+  }
+
+  /**
+   * A tab opened by Compare picks up its text. AI apps render the chat box
+   * late and some replace it once while hydrating, so this waits for a box,
+   * writes, and checks again a moment later before reporting success. The
+   * job stays with the worker until it is acknowledged, so a reload within
+   * the two-minute window tries again.
+   */
   async function checkPendingCompare() {
     if (!chrome.runtime || !chrome.runtime.sendMessage) return;
+    let job = null;
     try {
       const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({ action: 'get_pending_compare' }, (res) => {
@@ -925,64 +1023,84 @@
         });
       });
       if (!response || !response.ok || !response.job) return;
-      const job = response.job;
-      const startTime = Date.now();
-      const timeoutMs = 12000;
-      const checkInterval = 250;
+      job = response.job;
+    } catch (e) {
+      return;
+    }
 
-      async function attemptInsert() {
-        const target =
-          window.ChatbotAdapters && window.ChatbotAdapters.getInputElement
-            ? window.ChatbotAdapters.getInputElement()
-            : null;
+    const adapters = window.ChatbotAdapters;
+    const label = job.targetLabel || 'this AI';
+    const startTime = Date.now();
+    const timeoutMs = 30000;
+    const checkInterval = 400;
 
-        if (!target) {
-          if (Date.now() - startTime < timeoutMs) {
-            setTimeout(attemptInsert, checkInterval);
-            return;
-          }
-          showToast('OmniPrompt: Composer not found. Check if sign-in is required.', 'warn');
-          chrome.runtime.sendMessage({
-            action: 'compare_status',
-            success: false,
-            targetId: job.targetId,
-            message: 'Composer not found or sign-in required'
-          });
-          return;
-        }
+    const waitForBox = () =>
+      new Promise((resolve) => {
+        const tick = () => {
+          const el = adapters && adapters.getInputElement ? adapters.getInputElement() : null;
+          if (el) return resolve(el);
+          if (Date.now() - startTime >= timeoutMs) return resolve(null);
+          window.setTimeout(tick, checkInterval);
+        };
+        tick();
+      });
 
-        const inserted = await window.ChatbotAdapters.insert(job.text, { mode: 'replace' });
-        const landed = window.ChatbotAdapters.landingCheck ? window.ChatbotAdapters.landingCheck() : true;
+    const fail = async (why) => {
+      const copied = await copyText(job.text);
+      showToast(
+        why + (copied ? ' The prompt is on your clipboard: click the chat box and press ' + pasteKeyLabel() + '.' : ' Copy it again from OmniPrompt.'),
+        'warn'
+      );
+      sendCompareStatus(job, false, why);
+    };
 
-        if (inserted && landed) {
-          if (job.autoSend && window.ChatbotAdapters.submit) {
-            setTimeout(() => {
-              window.ChatbotAdapters.submit();
-            }, 300);
-          } else {
-            showToast('OmniPrompt: Prompt inserted for comparison.', 'ok');
-          }
-          chrome.runtime.sendMessage({
-            action: 'compare_status',
-            success: true,
-            targetId: job.targetId,
-            message: 'Inserted successfully'
-          });
-        } else {
-          showToast('OmniPrompt: Insertion failed. Your prompt was kept ready.', 'warn');
-          chrome.runtime.sendMessage({
-            action: 'compare_status',
-            success: false,
-            targetId: job.targetId,
-            message: 'Landing check failed'
-          });
+    let target = await waitForBox();
+    if (!target) {
+      await fail('No chat box on this page. You may need to sign in.');
+      return;
+    }
+
+    // Two tries: the first write can be wiped when the app swaps its editor.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // A box that already holds a restored draft keeps it; the prompt goes after it.
+      const existing = String(adapters.readValue(target) || '').trim();
+      const result = adapters.insert(job.text, { target, mode: existing ? 'append' : 'replace', submit: false });
+      let landed = await confirmLanded(result);
+      if (landed) {
+        await new Promise((r) => window.setTimeout(r, 900));
+        try {
+          landed = typeof result.check === 'function' ? result.check() : true;
+        } catch (e) {
+          landed = true;
         }
       }
-
-      attemptInsert();
-    } catch (e) {
-      // Ignored
+      if (landed) {
+        let sent = false;
+        if (job.autoSend) sent = adapters.submit(result.target);
+        showToast(sent ? 'Prompt sent to ' + label + '.' : 'Prompt ready in ' + label + '. Press send when you are ready.', 'ok');
+        sendCompareStatus(job, true, sent ? 'sent' : 'inserted');
+        return;
+      }
+      await new Promise((r) => window.setTimeout(r, 1200));
+      target = adapters.getInputElement() || target;
     }
+    await fail("This chat box didn't accept the text.");
+  }
+
+  /** The run summary, shown in the tab that started Compare. */
+  function showCompareSummary(request) {
+    const failed = Array.isArray(request.failed) ? request.failed : [];
+    const total = request.total || 0;
+    const okCount = total - failed.length;
+    if (!failed.length) {
+      showToast('Compare: text is in all ' + total + ' chats.', 'ok');
+      return;
+    }
+    showToast(
+      'Compare: inserted in ' + okCount + ' of ' + total + '. ' +
+        failed.map((f) => f.label + ': ' + f.message).join(' '),
+      'warn'
+    );
   }
 
   if (document.readyState === 'loading') {

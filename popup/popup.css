@@ -681,3 +681,7 @@ body {
 .workspace-clear-btn[hidden] {
   display: none;
 }
+
+/* In-popup confirmation (replaces native confirm(), which can close the popup). */
+.popup-confirm { max-width: 340px; }
+.popup-confirm-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-2); white-space: pre-line; }

@@ -692,9 +692,9 @@ const ChatbotAdapters = (() => {
     { id: 'deepseek', label: 'DeepSeek', host: 'deepseek.com', url: 'https://chat.deepseek.com/', icon: '🐋' },
     { id: 'grok', label: 'Grok', host: 'grok.com', url: 'https://grok.com/', icon: '⚡' },
     { id: 'mistral', label: 'Le Chat', host: 'chat.mistral.ai', url: 'https://chat.mistral.ai/chat', icon: '🌪️' },
-    { id: 'metaai', label: 'Meta AI', host: 'meta.ai', url: 'https://meta.ai/', icon: '🌐' },
+    { id: 'metaai', label: 'Meta AI', host: 'meta.ai', url: 'https://www.meta.ai/', icon: '🌐' },
     { id: 'qwen', label: 'Qwen', host: 'chat.qwen.ai', url: 'https://chat.qwen.ai/', icon: '💬' },
-    { id: 'kimi', label: 'Kimi', host: 'kimi.moonshot.cn', url: 'https://kimi.moonshot.cn/', icon: '🌙' },
+    { id: 'kimi', label: 'Kimi', host: 'kimi.com', url: 'https://www.kimi.com/', icon: '🌙' },
     { id: 'poe', label: 'Poe', host: 'poe.com', url: 'https://poe.com/', icon: '🪶' }
   ];
 

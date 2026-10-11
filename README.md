@@ -24,7 +24,7 @@ Folder sync (Pro) needs the File System Access API, which Chrome and Edge suppor
 
 - **The quick start guide** opens once, after install. Its practice box lets you type `//`, pick a prompt, fill in the blanks and insert it, all on the page, before you try it on a real site. It uses the real built-in library and template engine, and stores nothing. Pick a starter pack there to keep the menu short.
 - **The toolbar popup** is a launcher. Search, arrow to a prompt and press `↵` to insert it where your cursor is, or `Shift+↵` to copy it. The row you are on shows the text it will insert. Tabs: **Prompts**, **Transform** (the right-click modifiers), **+ New**, and **More** (switch off for this site, theme, export, import). Until you use your first prompt, a short card at the top shows the three ways in.
-- **The library page** (the popup's **Library** button) shows every prompt as a card or a list. Click one to read it in a side panel with the exact text, what its form will ask for, and Copy, Edit, Duplicate and Delete. Press `/` to jump to search. In the editor, `Ctrl+S` saves. **Settings**, **Backup & import** and **Plan** (Free or Pro, and the licence key) are at the bottom of the sidebar.
+- **The library page** (the popup's **Library** button) shows every prompt as a card or a list. Click one to read it in a side panel with the exact text, what its form will ask for, and Copy, Edit, Duplicate and Delete. Press `/` to jump to search. In the editor, `Ctrl+S` saves. **Settings**, **Backup & sync** and **Plan** (Free or Pro, and the licence key) are icons at the bottom of the sidebar, next to the theme switch.
 
 ---
 
@@ -165,12 +165,12 @@ Add prompts from the toolbar popup (**+ New**) or the full library page.
 - **Notes** on each prompt record why it works, which model it suits, or an example answer. Search reads them.
 - **Save from anywhere**: highlight text on a page, right-click **OmniPrompt → Save selection as a new prompt…**, or choose **Save as a new prompt** in the `Alt+K` palette to capture the draft in the chat box.
 - **Search** matches titles, shortcuts, tags, descriptions, notes and prompt text. Several words match in any order, so `email cold` finds "Cold email".
-- **Version history** keeps the last 20 versions of every prompt you edit. Free users can view earlier versions and copy their text; one-click restore is part of Pro.
+- **Version history** keeps the last 20 versions of every prompt you edit. You can view, copy or restore any earlier version from the **History** button, on Free and Pro. A restore keeps the text it replaced, so it can be undone.
 - **SKILL.md export** writes a prompt in the skill format Claude, ChatGPT and Mistral read. SKILL.md files also import.
 
-### Automatic backups
+### Restore points (automatic backups)
 
-OmniPrompt keeps a copy of your own prompts, edits, categories and favourites once a day, and before anything that replaces them: a replace-mode import, **Restore built-ins**, restoring an older backup, or an extension update. The last 7 are kept in local storage and can be restored from **Backup & import**. The page shows when the last backup and the last file download happened.
+OmniPrompt keeps a copy of your own prompts, edits, categories and favourites once a day, and before anything that replaces them: a replace-mode import, **Restore built-ins**, restoring an older backup, or an extension update. The last 7 are kept in local storage and can be restored from **Backup & sync**. The page shows when the last backup and the last file download happened.
 
 These copies live in the browser. Uninstalling removes them, so download a file backup now and then.
 
@@ -184,13 +184,13 @@ These copies live in the browser. Uninstalling removes them, so download a file 
 | Automatic backups and restoring them, import, export | ✓ | ✓ |
 | Folders, tag filters, bulk edit, tidy-up | ✓ | ✓ |
 | Remembered short answers | ✓ | ✓ |
-| Version history view and copy | ✓ | ✓ |
-| Restoring an earlier version | | ✓ |
+| Version history, with one-click restore | ✓ | ✓ |
 | Context blocks (`{{@shortcut}}`) | | ✓ |
 | Client workspaces | | ✓ |
 | Saved value sets | | ✓ |
 | Stepped chains | | ✓ |
-| Folder sync | | ✓ |
+| Sync with your Chrome profile (about 100KB) | ✓ | ✓ |
+| Folder sync (no size limit) | | ✓ |
 | Compare across AIs | | ✓ |
 | Smart templates (conditionals, date maths, repeats) | | ✓ |
 | Custom right-click modifiers | | ✓ |
@@ -204,7 +204,7 @@ The **History** button appears on every saved prompt in the editor, even before 
 
 ### Pro features
 
-**Compare across AIs.** Send a prompt to up to 6 AI composers simultaneously (ChatGPT, Claude, Gemini, Copilot, Perplexity, DeepSeek, Grok, Mistral, Meta AI, Qwen, Kimi, Poe) in tiled side-by-side windows or background tabs. Fill placeholders once in the preview modal, pick your targets, and insert. OmniPrompt never reads or scrapes AI responses.
+**Compare across AIs.** Send a prompt to up to 6 AI composers simultaneously (ChatGPT, Claude, Gemini, Copilot, Perplexity, DeepSeek, Grok, Mistral, Meta AI, Qwen, Kimi, Poe) in new tabs, which is the default, or in tiled side-by-side windows. Fill placeholders once in the preview modal, pick your targets, and insert. Each tab waits for its chat box, checks the text arrived, and only presses send if you ticked "Send in each tab". If a site shows a sign-in page instead, the text goes to your clipboard and the tab you started from shows a summary, such as "inserted in 2 of 3". OmniPrompt never reads or scrapes AI responses.
 
 **Smart templates.** Add dynamic logic to prompts with conditionals (`{{#if}}...{{#else}}...{{/if}}`), date arithmetic (`{{date+7d}}`), required fields (`{{field!}}`), and repeatable blocks (`{{#repeat item}}...{{/repeat}}`). Free users can always insert existing smart templates.
 
@@ -220,7 +220,7 @@ The **History** button appears on every saved prompt in the editor, even before 
 
 **Folder sync.** Choose a folder, for example inside Dropbox, OneDrive or iCloud Drive, and OmniPrompt keeps one file there, `omniprompt-library.json`, which is also a normal backup file. Point OmniPrompt on another computer at the same folder and the two libraries merge, newest edit winning. A prompt deleted on one computer is removed on the others unless it was edited there since, and a backup is taken first. Your cloud drive's own app moves the file; OmniPrompt has no server. Sync runs when the library page opens, after changes you make there, and when you press **Sync now**. Settings stay per computer. Chrome may ask again for permission to use the folder after a restart.
 
-**Library tools.** Folders inside folders in the sidebar, a tag list that filters the library, tick boxes for bulk moving, tagging, favouriting and deleting, and a **Tidy up** list of prompts you never use, prompts you stopped using, and prompts with the same text. Bulk changes and tidy-up deletions take a backup first. Folders, tags, bulk actions and tidy-up are available on both Free and Pro.
+**Library tools.** Folders inside folders and a tag list that filters the library (the sidebar shows Categories, Folders and Tags as tabs, one list at a time), tick boxes for bulk moving, tagging, favouriting and deleting, and a **Tidy up** list of prompts you never use, prompts you stopped using, and prompts with the same text. Bulk changes and tidy-up deletions take a backup first. Folders, tags, bulk actions and tidy-up are available on both Free and Pro.
 
 ### Deleting and restoring
 
@@ -235,7 +235,7 @@ The **History** button appears on every saved prompt in the editor, even before 
 
 ## Import and export
 
-**Export** writes your own prompts, custom categories, favourites and your edits to built-ins. Legacy folders in backups are gracefully translated into categories. Re-importing the file adds nothing new because duplicates are matched on title and template, which is what you want from a backup. There is a tick box to include all 136 built-in prompts for archiving.
+**Export** writes your own prompts, custom categories, favourites and your edits to built-ins. Legacy folders in backups are gracefully translated into categories. Re-importing the file adds nothing new because duplicates are matched on title and template, which is what you want from a backup. Built-ins ship with the extension, so they are not in the file.
 
 **Import** reads:
 
@@ -259,9 +259,9 @@ Column and field names are matched loosely, so `title`/`name`/`Title` and `templ
 | Slash menu | On, `//` | Prefix choices: `//` `/` `;;` `!!` |
 | Search palette shortcut | `Alt+K` | Record your own, or pick a preset |
 | Starter pack | All prompts | Which built-in pack shows in the menu and palette; every pack is free |
-| Favourites first | On | Ranking |
-| Recently used first | On | Ranking |
-| Theme | System | Light, dark, or follow the operating system; also in the popup's **More** tab |
+| Prioritise favourites | On | Favourites sit at the top of every list |
+| Prioritise recently used | On | Prompts you use often float upward |
+| Theme | System | Light, dark, or follow the operating system. Always in the library sidebar, the popup's **More** tab and the guide |
 | Sync with your Chrome profile | Off | Uses Chrome profile sync, about a 100KB ceiling |
 | Folder sync (Pro) | Not set up | One file in a folder you choose |
 | Remembered answers | On | Short answers only; **Forget them** clears the lot |

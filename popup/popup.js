@@ -175,6 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderWorkspaceBar();
 
     bindTabs();
+    // Mac users press Cmd, not Ctrl, for the form's insert chord.
+    if (store.isMacPlatform()) document.querySelectorAll('.omni-mod-key').forEach((k) => { k.textContent = '⌘'; });
     bindWorkspaceBar();
     bindSearch();
     bindCategoryNav();
@@ -513,9 +515,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function selectTab(tabId) {
+  async function selectTab(tabId) {
     if (tabId !== 'tab-new' && isFormDirty()) {
-      if (!window.confirm('Discard unsaved changes to this prompt?')) return;
+      if (!(await askConfirm('Discard your unsaved changes to this prompt?', 'Discard'))) return;
       formInitialSnapshot = null;
       resetForm();
     }
@@ -1341,7 +1343,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const restore = btn.textContent;
 
     if (!navigator.clipboard || !navigator.clipboard.readText) {
-      btn.textContent = 'Ctrl+V';
+      btn.textContent = store.isMacPlatform() ? '⌘V' : 'Ctrl+V';
       field.focus();
       setTimeout(() => {
         btn.textContent = restore;
@@ -1365,7 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1400);
       })
       .catch(() => {
-        btn.textContent = 'Ctrl+V';
+        btn.textContent = store.isMacPlatform() ? '⌘V' : 'Ctrl+V';
         field.focus();
         setTimeout(() => {
           btn.textContent = restore;
@@ -1676,9 +1678,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    el.cancelBtn.addEventListener('click', () => {
+    el.cancelBtn.addEventListener('click', async () => {
       if (isFormDirty()) {
-        if (!window.confirm('Discard unsaved changes to this prompt?')) return;
+        if (!(await askConfirm('Discard your unsaved changes to this prompt?', 'Discard'))) return;
       }
       formInitialSnapshot = null;
       clearFormErrors();
@@ -2036,20 +2038,95 @@ document.addEventListener('DOMContentLoaded', () => {
   async function restoreDefaults() {
     const mine = store.getAll().filter((p) => p.isCustom).length;
     const message =
-      'Restore the built-in library?\n\n' +
-      'This undoes your edits to built-in prompts and brings back any you deleted.\n' +
+      'This undoes your edits to built-in prompts and brings back any you deleted. ' +
       'Your own ' +
       mine +
       ' prompt' +
       (mine === 1 ? '' : 's') +
       ', custom categories and favourites are not affected.';
 
-    if (!window.confirm(message)) return;
+    if (!(await askConfirm(message, 'Restore built-ins', 'Restore the built-in library?'))) return;
 
     const result = await store.restoreDefaultLibrary();
     renderPills();
     renderList();
     showToast('Library restored. ' + result.promptsRestored + ' brought back, ' + result.patchesCleared + ' edit(s) undone.');
+  }
+
+  /**
+   * An in-popup confirmation. A native confirm() can close the toolbar popup
+   * on some platforms, losing the answer, so this draws its own small dialog.
+   * Resolves true only for the confirm button; Esc, Cancel and the backdrop
+   * all resolve false.
+   */
+  function askConfirm(message, okLabel, title) {
+    return new Promise((resolve) => {
+      const opener = document.activeElement;
+      const backdrop = document.createElement('div');
+      backdrop.className = 'popup-modal-backdrop';
+      backdrop.style.display = 'flex';
+      backdrop.setAttribute('role', 'alertdialog');
+      backdrop.setAttribute('aria-modal', 'true');
+      const box = document.createElement('div');
+      box.className = 'popup-modal-content popup-confirm';
+      const head = document.createElement('div');
+      head.className = 'popup-modal-header';
+      const h = document.createElement('div');
+      h.className = 'popup-modal-title';
+      h.id = 'popup-confirm-title';
+      h.textContent = title || 'Are you sure?';
+      head.appendChild(h);
+      const body = document.createElement('div');
+      body.className = 'popup-modal-body';
+      const p = document.createElement('p');
+      p.className = 'popup-confirm-text';
+      p.id = 'popup-confirm-text';
+      p.textContent = message;
+      body.appendChild(p);
+      const foot = document.createElement('div');
+      foot.className = 'popup-modal-footer';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn-ghost';
+      cancel.textContent = 'Cancel';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = okLabel || 'OK';
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+      box.appendChild(head);
+      box.appendChild(body);
+      box.appendChild(foot);
+      backdrop.appendChild(box);
+      backdrop.setAttribute('aria-labelledby', 'popup-confirm-title');
+      backdrop.setAttribute('aria-describedby', 'popup-confirm-text');
+      const done = (answer) => {
+        document.removeEventListener('keydown', onKey, true);
+        backdrop.remove();
+        if (opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+        resolve(answer);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          done(false);
+        } else if (e.key === 'Tab') {
+          e.preventDefault();
+          (document.activeElement === ok ? cancel : ok).focus();
+        }
+      };
+      cancel.addEventListener('click', () => done(false));
+      ok.addEventListener('click', () => done(true));
+      backdrop.addEventListener('mousedown', (e) => {
+        if (e.target === backdrop) done(false);
+      });
+      document.addEventListener('keydown', onKey, true);
+      document.body.appendChild(backdrop);
+      // Cancel is the safe default for a destructive question.
+      cancel.focus();
+    });
   }
 
   /* =====================================================================

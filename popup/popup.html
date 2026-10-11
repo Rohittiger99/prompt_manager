@@ -30,7 +30,7 @@
       <div class="search-box">
         <svg class="ico search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
         <input type="text" id="search-input" placeholder="Search your prompts" autofocus autocomplete="off" spellcheck="false" aria-label="Search prompts" aria-controls="prompts-list" aria-describedby="search-hint" />
-        <span class="search-hint" id="search-hint" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd> <kbd>↵</kbd></span>
+        <span class="search-hint" id="search-hint" aria-hidden="true"><kbd>â†‘</kbd><kbd>â†“</kbd> <kbd>â†µ</kbd></span>
         <button type="button" id="clear-search" class="clear-btn" hidden title="Clear search" aria-label="Clear search">
           <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
         </button>
@@ -40,7 +40,7 @@
       <div class="workspace-bar" id="workspace-bar" hidden>
         <label for="workspace-select">Workspace</label>
         <select id="workspace-select"></select>
-        <button type="button" id="workspace-clear-btn" class="workspace-clear-btn" hidden title="Clear active workspace" aria-label="Clear active workspace">✕</button>
+        <button type="button" id="workspace-clear-btn" class="workspace-clear-btn" hidden title="Clear active workspace" aria-label="Clear active workspace">âœ•</button>
       </div>
 
       <nav class="nav-tabs" role="tablist" aria-label="Popup sections">
@@ -85,7 +85,7 @@
           <ol class="quick-start-steps">
             <li><span class="qs-key"><kbd id="quick-start-trigger">//</kbd></span><span>Type it in any text box, then a word such as <code>review</code>.</span></li>
             <li><span class="qs-key"><kbd id="quick-start-hotkey">Alt+K</kbd></span><span>Search every prompt on any page.</span></li>
-            <li><span class="qs-key qs-click" aria-hidden="true">↵</span><span>Or pick one below. It goes where your cursor is.</span></li>
+            <li><span class="qs-key qs-click" aria-hidden="true">â†µ</span><span>Or pick one below. It goes where your cursor is.</span></li>
           </ol>
         </section>
 
@@ -217,7 +217,7 @@
             </span>
             <div class="data-card-info">
               <label class="data-card-title" for="setting-site-disabled">Turn off on this site</label>
-              <span class="data-card-desc" id="site-host">—</span>
+              <span class="data-card-desc" id="site-host">â€”</span>
             </div>
             <label class="switch">
               <input type="checkbox" id="setting-site-disabled" />
@@ -277,18 +277,18 @@
             </span>
             <div class="data-card-info">
               <span class="data-card-title">Restore the built-in library</span>
-              <span class="data-card-desc">Undoes your edits to the built-in prompts and brings back any you deleted. Prompts you wrote yourself are not touched.</span>
+              <span class="data-card-desc">Undoes your edits to built-ins and brings back deleted ones. Your own prompts are not touched.</span>
             </div>
             <button type="button" id="btn-reset-defaults" class="btn-secondary btn-mini">Restore</button>
           </div>
         </div>
 
-        <p class="pane-note more-foot">Backups, sync, shortcuts and every other setting are in the <button type="button" class="btn-link" id="btn-more-open-settings">library settings</button>.</p>
+        <p class="pane-note more-foot">Shortcuts and more are in <button type="button" class="btn-link" id="btn-more-open-settings">settings</button>.</p>
       </div>
     </main>
 
     <footer class="footer">
-      <span id="prompt-count" class="tabular">Loading…</span>
+      <span id="prompt-count" class="tabular">Loadingâ€¦</span>
       <span class="shortcut-hint" id="footer-shortcut-hint"></span>
     </footer>
   </div>
@@ -313,7 +313,7 @@
         <div class="modal-warning" id="modal-warning"></div>
       </div>
       <div class="popup-modal-footer">
-        <span class="modal-foot-hint"><kbd>Ctrl</kbd><kbd>↵</kbd></span>
+        <span class="modal-foot-hint"><kbd class="omni-mod-key">Ctrl</kbd><kbd>â†µ</kbd></span>
         <button type="button" class="btn-secondary" id="btn-modal-copy">Copy</button>
         <button type="button" class="btn-primary" id="btn-modal-insert">Insert into page</button>
       </div>
@@ -338,7 +338,7 @@
         <div class="form-group">
           <label for="popup-cat-custom-emoji">Icon</label>
           <div class="emoji-picker-header">
-            <div class="selected-emoji-preview" id="popup-cat-preview">🏷️</div>
+            <div class="selected-emoji-preview" id="popup-cat-preview">ðŸ·ï¸</div>
             <div class="custom-emoji-input-wrap">
               <input type="text" id="popup-cat-custom-emoji" maxlength="4" placeholder="Type or paste an emoji" />
               <span class="field-note">Or pick one below</span>

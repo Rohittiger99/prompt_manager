@@ -24,8 +24,8 @@ Each one comes from a competitor's 1-star reviews. Do not ship changes that brea
 10. No jailbreak or guardrail-bypass prompt content (Chrome Web Store policy, July 2026).
 
 ## Free and Pro
-- Free: every insertion feature except chains, all 136 built-ins (including the Client Work pack), 20 custom prompts, import/export, automatic backups and restoring them, folders, tag filters, bulk edit, tidy-up, remembered short answers, version history view and copy.
-- Pro ($25 one-time, lifetime): unlimited custom prompts, client workspaces, saved value sets, stepped chains, folder sync, one-click restore for earlier versions, context blocks (`{{@shortcut}}`), compare across AIs, smart templates (conditionals, date maths, required fields, repeatable blocks), custom right-click modifiers, and site rules.
+- Free: every insertion feature except chains, all 136 built-ins (including the Client Work pack), 20 custom prompts, import/export, automatic backups and restoring them, folders, tag filters, bulk edit, tidy-up, remembered short answers, version history with one-click restore, Chrome profile sync.
+- Pro ($25 one-time, lifetime): unlimited custom prompts, client workspaces, saved value sets, stepped chains, folder sync (no size limit), context blocks (`{{@shortcut}}`), compare across AIs, smart templates (conditionals, date maths, required fields, repeatable blocks), custom right-click modifiers, and site rules.
 - Pro data (workspaces, chains, value sets, custom modifiers, site rules) stays readable, exportable, backed up and deletable on Free; only creating or using it needs Pro.
 - Price, checkout links and the feature list live only in `lib/promptStore.js` (`PRO_PRICE`, `PRO_CHECKOUT_URLS`, `PRO_FEATURES`). Every surface must read them via `OmniStore.getProInfo()`, never hard-code them.
 - Licences are verified with Dodo Payments. Never add offline bypass or test keys to shipped code.

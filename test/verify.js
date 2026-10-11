@@ -2038,18 +2038,10 @@ async function testHistoryNotesSearch() {
   await S.savePrompt({ id: p.id, title: 'Brief v3', template: 'Third text' });
   eq(S.getHistory(p.id).length, 2, 'Saving without a change adds no version');
 
-  let blocked = null;
-  try {
-    await S.restoreVersion(p.id, 1);
-  } catch (e) {
-    blocked = e;
-  }
-  eq(blocked && blocked.code, 'PRO_REQUIRED', 'Restoring a version asks for Pro on Free');
-  eq(S.getById(p.id).template, 'Third text', 'A refused restore changes nothing');
-
-  await S.activateLicense('PRO-HIST');
+  // Restoring an earlier version is the user's own data, so it works on Free.
+  ok(!S.isPro(), 'This check runs on the Free plan');
   await S.restoreVersion(p.id, 1);
-  eq(S.getById(p.id).template, 'First text', 'Pro restores an older version');
+  eq(S.getById(p.id).template, 'First text', 'Free restores an older version');
   eq(S.getHistory(p.id)[0].template, 'Third text', 'The text a restore replaced is kept, so the restore can be undone');
 
   for (let i = 0; i < 30; i++) await S.savePrompt({ id: p.id, template: 'Edit ' + i });
@@ -2449,7 +2441,9 @@ async function testClientPackAndImportLimit() {
   const popupJs = readCode('popup/popup.js');
   const popupHtml = read('popup/popup.html');
   ok(/historyBtn\.style\.display = id \? '' : 'none'/.test(optionsJs), 'History shows on every saved prompt, even with no versions yet');
-  ok(optionsJs.indexOf('toldAboutHistory') !== -1, 'The "Pro can restore it" note is shown once per visit, not on every save');
+  ok(optionsJs.indexOf('toldAboutHistory') === -1 && optionsJs.indexOf('Pro can restore it') === -1, 'History restore is free, so no screen says Pro is needed for it');
+  ok(optionsHtml.indexOf('export-include-library') === -1, 'The export page has no built-ins checkbox to explain');
+  ok(/id="view-data"[\s\S]*id="setting-folder-sync"[\s\S]*id="view-plan"/.test(optionsHtml), 'Sync lives on the Backup & sync page, not in Settings');
   ok(optionsJs.indexOf('result.overLimit') !== -1 && popupJs.indexOf('result.overLimit') !== -1, 'Both import screens explain the limit');
   ok(optionsHtml.indexOf('id="plan-compare"') !== -1, 'The licence card has a Free vs Pro table');
   ok(optionsJs.indexOf("setCell('plan-pro-price'") !== -1, 'The table reads the price from getProInfo');
@@ -2532,9 +2526,10 @@ async function testDodoMode() {
   }
 
   const ids = info.features.map((f) => f.id);
-  ['limit', 'workspaces', 'sets', 'chains', 'sync', 'history', 'blocks'].forEach((id) => {
+  ['limit', 'workspaces', 'sets', 'chains', 'sync', 'blocks'].forEach((id) => {
     ok(ids.indexOf(id) !== -1, 'Pro feature list includes ' + id);
   });
+  ok(ids.indexOf('history') === -1, 'Version history is not sold as a Pro feature');
   ok(info.features.every((f) => f.title && f.text), 'Every Pro feature has a title and a line of text');
   const optionsJs = readCode('options/options.js');
   ids.forEach((id) => {
@@ -3015,7 +3010,7 @@ async function testCompareAcrossAis() {
   ok(bgCode.indexOf('start_compare') !== -1, 'Background handles start_compare');
   ok(bgCode.indexOf('get_pending_compare') !== -1, 'Background handles get_pending_compare');
   ok(bgCode.indexOf('compare_status') !== -1, 'Background handles compare_status');
-  ok(bgCode.indexOf('targets.slice(0, 6)') !== -1, 'Background caps compare targets at 6');
+  ok(bgCode.indexOf('chosen.length < 6') !== -1, 'Background caps compare targets at 6');
 
   // Content script adapters security check: no chatbot response reading, no transcript scraping
   const adaptersCode = read('content/adapters.js');
@@ -3027,6 +3022,52 @@ async function testCompareAcrossAis() {
   const contentCode = read('content/content.js');
   ok(contentCode.indexOf('checkPendingCompare') !== -1, 'Content script checks for pending compare jobs');
   ok(contentCode.indexOf('open_compare') !== -1, 'Content script handles open_compare message');
+
+  // The wiring between the form and the worker. Each of these was broken at
+  // once, so Compare did nothing even with Pro active.
+  const cs = readCode('content/content.js');
+  const vmCode = readCode('content/variableModal.js');
+  const opt = readCode('options/options.js');
+  ok(/meta && meta\.compare\)[\s\S]{0,120}startCompareRun\(renderedText, meta\.compare\)/.test(cs),
+    '"Run comparison" in the form starts a compare run instead of inserting into this page');
+  ok(/onSelectPrompt: \(prompt, ctx\) => \{[\s\S]{0,400}compareMode: !!\(ctx && ctx\.compareMode\)/.test(cs),
+    'The palette passes compareMode through, so Compare… opens the target picker');
+  ok(/allowCompare: false/.test(cs) && /opts\.allowCompare === false/.test(vmCode),
+    'Chain steps hide Compare, which would otherwise break the chain');
+  ok(/Promise\.resolve\(store\.getLastCompareTargets\(\)\)/.test(vmCode) && vmCode.indexOf('lastTargets.forEach') === -1,
+    'The in-page form treats the remembered targets as a promise');
+  ok(/await store\.getLastCompareTargets\(\)/.test(opt) && opt.indexOf('lastChosen = store.getLastCompareTargets()') === -1,
+    'The library page awaits the remembered targets before drawing the picker');
+  ok(vmCode.indexOf('escapeHtml(t.name)') === -1 && opt.indexOf('escapeHtml(t.name)') === -1,
+    'Compare pickers show the target label, which is the field the target lists define');
+  ok(/compareModalPreview\.value/.test(opt) && /<textarea[^>]*id="opt-compare-preview"/.test(read('options/options.html')),
+    'The library page sends the editable text box, so blanks can be filled first');
+
+  // The worker opens URLs from the store's list; the tab finds its chat box
+  // through the adapter's list. They must describe the same pages.
+  const adapterTargets = H.createAdapterRealm().adapters.COMPARE_TARGETS.map((t) => t.id + ' ' + t.url);
+  eq(targets.map((t) => t.id + ' ' + t.url), adapterTargets, 'Store and adapter compare targets open the same URLs');
+  const manifest = JSON.parse(read('manifest.json'));
+  const matches = manifest.content_scripts[0].matches;
+  const covered = (url) => {
+    const host = new URL(url).hostname;
+    return matches.some((m) => {
+      const h = m.replace(/^\*:\/\//, '').replace(/\/.*$/, '');
+      if (h.indexOf('*.') === 0) return host === h.slice(2) || host.endsWith(h.slice(1));
+      return host === h;
+    });
+  };
+  const uncovered = targets.filter((t) => !covered(t.url)).map((t) => t.id);
+  eq(uncovered, [], 'Every compare target URL gets the content script');
+
+  // New tabs are the default; tiled windows only when picked.
+  const optHtml = read('options/options.html');
+  ok(/name="omni-compare-layout" value="tabs" checked/.test(vmCode) && !/value="window" checked/.test(vmCode),
+    'The in-page form opens new tabs by default');
+  ok(/name="opt-compare-layout" value="tabs" checked/.test(optHtml) && !/name="opt-compare-layout" value="window" checked/.test(optHtml),
+    'The library dialog opens new tabs by default');
+  ok(/const layout = request\.layout === 'tiled' \? 'tiled' : 'tabs';/.test(readCode('background/background.js')),
+    'The worker opens tabs unless tiled windows were asked for');
 }
 
 async function testSmartTemplates() {
@@ -3293,6 +3334,104 @@ async function testFolderSyncSetupAndBacklog() {
   ok(researchMd.indexOf('Google Drive') !== -1, 'product_research.md contains Google Drive note');
 }
 
+async function testFinalAuditRegressions() {
+  section('39. Final audit regressions (storage reload, sync, compare, chains)');
+
+  // A storage change from another surface reloads state. Every key the store
+  // keeps must be re-read, or the next save writes an empty list back.
+  const { realm, S } = await proRealm('AUDIT-KEY');
+  await S.createCategory('Client work', '💼');
+  await S.saveCustomModifier({ title: 'Bulletise', instruction: 'Make bullets', placement: 'quote' });
+  await S.saveSiteRule({ name: 'Mail', hosts: ['mail.google.com'], tags: ['email'] });
+  S.watchStorage();
+  await new Promise((resolve) => realm.chrome.storage.local.set({ 'omni.usage': { x: 1 } }, resolve));
+  await new Promise((r) => setTimeout(r, 20));
+  ok(S.getCustomCategories().some((x) => x.name === 'Client work'), 'An unrelated storage change keeps custom categories in memory');
+  eq(S.getCustomModifiers().length, 1, 'An unrelated storage change keeps custom modifiers in memory');
+  eq(S.getSiteRules().length, 1, 'An unrelated storage change keeps site rules in memory');
+  await S.restoreDefaultLibrary();
+  eq((realm.read('omni.customModifiers') || []).length, 1, 'A later full save does not write custom modifiers back as empty');
+  eq((realm.read('omni.siteRules') || []).length, 1, 'A later full save does not write site rules back as empty');
+
+  // A fresh load reads custom categories too.
+  const again = H.createStoreRealm({ storageSeed: JSON.parse(JSON.stringify(realm.storage.local)) });
+  await again.sandbox.OmniStore.init();
+  ok(again.sandbox.OmniStore.getCustomCategories().some((x) => x.name === 'Client work'), 'init() loads custom categories');
+
+  // Custom modifiers and site rules travel through Chrome sync, and a
+  // deletion on one device is not undone by the other.
+  const one = await proRealm('SYNC-A');
+  await one.S.setSyncEnabled(true);
+  const mod = await one.S.saveCustomModifier({ title: 'Shorten', instruction: 'Shorten it', placement: 'after' });
+  await one.S.saveSiteRule({ name: 'Code', hosts: ['github.com'], tags: ['code'] });
+  await one.S.pushSync();
+  const two = await proRealm('SYNC-B', { sharedSync: one.realm.storage.sync });
+  await two.S.setSyncEnabled(true);
+  ok(two.S.getCustomModifiers().some((m) => m.title === 'Shorten'), 'Custom modifiers reach a second device through sync');
+  ok(two.S.getSiteRules().some((r) => r.name === 'Code'), 'Site rules reach a second device through sync');
+  await one.S.deleteCustomModifier(mod.id);
+  ok(typeof one.S.exportBundle({ includeTombstones: true }).tombstones[mod.id] === 'number', 'Deleting a custom modifier leaves a deletion record');
+  await one.S.pushSync();
+  await two.S.pullSync();
+  ok(!two.S.getCustomModifiers().some((m) => m.id === mod.id), 'A modifier deleted on one device is removed on the other');
+
+  // Folder sync carries them too.
+  const file = JSON.stringify(two.S.exportBundle({ includeSettings: false, includeTombstones: true }));
+  const three = await proRealm('SYNC-C');
+  await three.S.folderSyncMerge(file);
+  ok(three.S.getSiteRules().some((r) => r.name === 'Code'), 'Folder sync merges site rules');
+
+  // Compare: the in-page form hands its result to the coordinator, which uses
+  // the field names the worker reads.
+  const cs = readCode('content/content.js');
+  const bg = readCode('background/background.js');
+  const vm = readCode('content/variableModal.js');
+  ok(vm.indexOf("action: 'start_compare'") === -1, 'The fill-in form does not message the worker with its own field names');
+  ok(/action: 'start_compare',\s*text,\s*targets:/.test(cs), 'Content sends start_compare with text and targets');
+  ok(bg.indexOf('request.targets') !== -1 && bg.indexOf('request.text') !== -1, 'The worker reads text and targets');
+  ok(cs.indexOf('landingCheck()') === -1 && cs.indexOf('await window.ChatbotAdapters.insert') === -1, 'Compare checks the landing result instead of a truthy object');
+  ok(cs.indexOf('confirmLanded(result)') !== -1 && /checkPendingCompare[\s\S]*confirmLanded\(result\)/.test(cs), 'Compare tabs confirm the text landed before sending');
+  ok(/case 'compare_status':[\s\S]{0,400}recordCompareResult/.test(bg), 'The worker records each compare result');
+  ok(bg.indexOf("action: 'compare_summary'") !== -1 && cs.indexOf("case 'compare_summary'") !== -1, 'The tab that started Compare gets a summary');
+  ok(bg.indexOf('availLeft') === -1 && bg.indexOf('screenLeft') !== -1, 'Tiling uses the screen position sent by the page');
+  ok(bg.indexOf('COMPARE_MIN_W') !== -1, 'Tiled windows have a minimum width');
+
+  // Chains: the runner uses adapter functions that exist.
+  const ad = readCode('content/adapters.js');
+  ok(cs.indexOf('findActiveComposer') === -1, 'The chain runner does not call a missing adapter function');
+  ok(/getRememberedTarget,/.test(ad) && /getInputElement,/.test(ad), 'The adapter exports what the chain runner uses');
+
+  // The palette compare shortcut works on macOS, where Option+C types "ç".
+  const pal = readCode('content/commandPalette.js');
+  ok(pal.indexOf("e.code === 'KeyC'") !== -1, 'The palette compare shortcut matches on e.code');
+
+  // Every OmniStore call on the options page exists.
+  const opt = readCode('options/options.js');
+  const called = new Set((opt.match(/\bstore\.([A-Za-z]\w*)\(/g) || []).map((m) => m.slice(6, -1)));
+  const missing = Array.from(called).filter((name) => typeof S[name] !== 'function');
+  eq(missing.join(', '), '', 'Every store.*() call in options.js exists in OmniStore');
+  const pop = readCode('popup/popup.js');
+  const calledP = new Set((pop.match(/\bstore\.([A-Za-z]\w*)\(/g) || []).map((m) => m.slice(6, -1)));
+  eq(Array.from(calledP).filter((name) => typeof S[name] !== 'function').join(', '), '', 'Every store.*() call in popup.js exists in OmniStore');
+  ok(pop.indexOf('window.confirm(') === -1, 'The popup uses its own confirm dialog, which cannot close the popup');
+
+  // Dates are YYYY-MM-DD from the local clock, as the README promises, so
+  // 10/8/2026 never means October to one user and August to another.
+  const tRealm = H.createStoreRealm();
+  const T = tRealm.sandbox.OmniTemplate;
+  eq(T.localIsoDate(new Date(2026, 0, 5, 23, 30)), '2026-01-05', 'localIsoDate pads and uses the local day');
+  const rendered = T.render('Due {{date+7d}}', {});
+  ok(/^Due \d{4}-\d{2}-\d{2}$/.test(rendered), 'Date maths renders YYYY-MM-DD', rendered);
+  const tcode = readCode('lib/template.js');
+  ok(tcode.indexOf('toLocaleDateString') === -1, 'Template dates do not depend on the browser locale');
+
+  // Store-page excludes match between the manifest and dynamic registration.
+  const m = JSON.parse(read('manifest.json'));
+  const ex = m.content_scripts[0].exclude_matches;
+  ok(ex.indexOf('*://addons.opera.com/*') !== -1, 'Opera add-ons store is excluded');
+  ex.forEach((p) => ok(bg.indexOf("'" + p + "'") !== -1, 'Dynamic scripts exclude ' + p));
+}
+
 async function main() {
   console.log('OmniPrompt regression suite');
   console.log('===========================');
@@ -3341,6 +3480,7 @@ async function main() {
   await testCustomModifiers();
   await testSiteRules();
   await testFolderSyncSetupAndBacklog();
+  await testFinalAuditRegressions();
 
   console.log('\n===========================');
   console.log('Passed: ' + passed);

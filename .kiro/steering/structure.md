@@ -20,7 +20,7 @@ content/                     Injected into curated AI sites by default; dynamic 
   content.css                Styles inside the shadow root (web accessible)
 styles/base.css              Design tokens and controls for popup, options and welcome pages
 popup/                       Toolbar popup
-options/                     Library, editor, settings, backup & import, Pro
+options/                     Library, editor, settings, backup & sync, Pro
 background/background.js     Service worker: context menus, commands, injection into open tabs, snapshots
 welcome/                     First-run guide and role onboarding
 test/harness.js              Node vm realm with fake chrome.storage and a minimal DOM
@@ -51,6 +51,8 @@ When adding or renaming a shipped script, update all of:
 4. The `testSyntax` file list and the `shipped` network-check list in `test/verify.js`, and `LIB_FILES` in `test/harness.js` for libs.
 
 ## Storage keys
+`STATE_KEYS` in `lib/promptStore.js` is the one list `load()` and `watchStorage()` read. `applyLoaded()` resets any key it does not receive, so a new persisted key must be added to `K`, `STATE_KEYS`, `DELTA_KEYS` (if it is the user's data), `syncPayload`/`mergeRemote` (if it syncs) and the README table. Section 39 of the suite catches a missing one.
+
 All defined in object `K` at the top of `lib/promptStore.js` and exported as `OmniStore.KEYS`. Schema v2 stores only deltas: `omni.userPrompts`, `omni.defaultPatches`, `omni.hiddenDefaults`, plus `omni.customCategories`, `omni.folders`, `omni.favorites`, `omni.usage`, `omni.settings`, `omni.license`, the Pro keys `omni.workspaces`, `omni.variableSets`, `omni.chains`, `omni.tombstones`, `omni.customModifiers`, `omni.siteRules`, and others. `omni.snapshots`, `omni.history`, `omni.backupMeta`, `omni.pendingDraft`, `omni.lastValues`, `omni.folderSyncMeta`, `omni.compareTargets` and the licence are local-only and never synced. Transient compare job state lives in session storage (`omni.compare.<tabId>`). The folder-sync directory handle is the one thing outside `chrome.storage`: it lives in the options page's IndexedDB (`omniprompt-folder-sync`), because only IndexedDB can hold a file handle. Legacy v1 keys (`custom_prompts`, `prompts_override`, ...) are read only by migration and left on disk. If you add a key, add it to `K` and to the README storage table.
 
 ## Theming

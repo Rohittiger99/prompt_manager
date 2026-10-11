@@ -129,10 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
     btnAddEnabledSite: document.getElementById('btn-add-enabled-site'),
     enabledSitesList: document.getElementById('enabled-sites-list'),
 
-    themeStatus: document.getElementById('theme-status'),
 
     exportSummary: document.getElementById('export-summary'),
-    exportIncludeLibrary: document.getElementById('export-include-library'),
     exportBtn: document.getElementById('btn-export-backup'),
     importFile: document.getElementById('options-import-file'),
     importReplace: document.getElementById('import-replace-mode'),
@@ -187,6 +185,20 @@ document.addEventListener('DOMContentLoaded', () => {
     buyProLink: document.getElementById('link-buy-pro'),
     buyProLabel: document.getElementById('buy-pro-label'),
     licenseFeedback: document.getElementById('license-feedback'),
+    planTiers: document.getElementById('plan-tiers'),
+    planKeyBox: document.getElementById('plan-key-box'),
+    planFaq: document.getElementById('plan-faq'),
+    planUsageLimit: document.getElementById('plan-usage-limit'),
+    planUsageFill: document.getElementById('plan-usage-fill'),
+    planUsageProof: document.getElementById('plan-usage-proof'),
+    planProAmount: document.getElementById('plan-pro-amount'),
+    planFreeAmount: document.getElementById('plan-free-amount'),
+    planProFeatures: document.getElementById('plan-pro-features'),
+    planSeeAll: document.getElementById('btn-plan-see-all'),
+    planCompareBox: document.getElementById('plan-compare-box'),
+    planActiveSub: document.getElementById('plan-active-sub'),
+    planActiveFeatures: document.getElementById('plan-active-features'),
+    upgradeModalSeeAll: document.getElementById('btn-upgrade-modal-see-all'),
 
     upgradeModal: document.getElementById('upgrade-modal'),
     upgradeModalTitle: document.getElementById('upgrade-modal-title'),
@@ -405,6 +417,8 @@ document.addEventListener('DOMContentLoaded', () => {
     bindDrawer();
     bindLayoutToggle();
     bindPageKeys();
+    bindModalFocus();
+    paintPlatformKeys();
 
     paintLayout();
     paintSettings();
@@ -419,6 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderRules();
 
     handleUrlParams();
+    bindHistory();
 
     // Opening the library is a natural moment for the daily backup.
     store.maybeDailySnapshot().then(renderBackups, renderBackups);
@@ -482,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (link) link.href = info.checkoutUrl;
     });
     if (el.buyProLabel) {
-      el.buyProLabel.textContent = 'Get Pro for ' + info.price + ', once';
+      el.buyProLabel.textContent = 'Get Pro for ' + info.price;
     }
   }
 
@@ -502,11 +517,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.theme-opt').forEach((btn) => {
       btn.setAttribute('aria-pressed', String(btn.getAttribute('data-choice') === choice));
     });
-
-    if (el.themeStatus) {
-      el.themeStatus.textContent =
-        choice === 'system' ? 'Following your system: ' + resolved + '.' : window.OmniTheme.label(choice) + ' theme.';
-    }
   }
 
   function bindTheme() {
@@ -552,7 +562,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function bindSidebarUX() {
     const COLLAPSED_KEY = 'omni.sidebar_collapsed';
-    const SECTIONS_KEY = 'omni.sidebar.collapsed_sections';
 
     function setSidebarCollapsed(collapsed) {
       if (!el.appLayout) return;
@@ -603,69 +612,73 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Collapsible section headers (Categories, Folders, Tags)
-    let collapsedSections = {};
-    try {
-      collapsedSections = JSON.parse(localStorage.getItem(SECTIONS_KEY) || '{}');
-    } catch (_) {}
+    // Categories, Folders and Tags share one list area. Only one shows at a
+    // time, so the list gets the whole height of the sidebar.
+    const TAB_KEY = 'omni.sidebar.tab';
+    const TABS = ['categories', 'folders', 'tags'];
 
-    function updateSectionState(sectionId, isCollapsed) {
-      const listMap = {
-        categories: el.catList,
-        folders: el.folderList,
-        tags: el.tagList
-      };
-      const listEl = listMap[sectionId];
-      if (listEl) {
-        listEl.classList.toggle('is-collapsed', isCollapsed);
-      }
-      const btn = document.querySelector('.sidebar-section-toggle[data-section="' + sectionId + '"]');
-      if (btn) {
-        btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
-      }
-    }
-
-    // Restore stored collapse states
-    Object.keys(collapsedSections).forEach((sectionId) => {
-      if (collapsedSections[sectionId]) {
-        updateSectionState(sectionId, true);
-      }
-    });
-
-    if (el.sidebarSectionToggles) {
-      el.sidebarSectionToggles.forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const sectionId = btn.getAttribute('data-section');
-          if (!sectionId) return;
-          collapsedSections[sectionId] = !collapsedSections[sectionId];
-          updateSectionState(sectionId, !!collapsedSections[sectionId]);
-          try {
-            localStorage.setItem(SECTIONS_KEY, JSON.stringify(collapsedSections));
-          } catch (_) {}
-        });
+    function selectSidebarTab(id, persist) {
+      if (TABS.indexOf(id) === -1) id = 'categories';
+      const lists = { categories: el.catList, folders: el.folderList, tags: el.tagList };
+      TABS.forEach((t) => {
+        if (lists[t]) lists[t].classList.toggle('is-collapsed', t !== id);
       });
+      el.sidebarSectionToggles.forEach((btn) => {
+        btn.setAttribute('aria-selected', String(btn.getAttribute('data-section') === id));
+      });
+      if (el.addCategory) el.addCategory.hidden = id !== 'categories';
+      if (el.addFolder) el.addFolder.hidden = id !== 'folders';
+      if (persist) {
+        try {
+          localStorage.setItem(TAB_KEY, id);
+        } catch (_) {
+          /* storage can be unavailable; the tab just will not be remembered */
+        }
+      }
     }
+
+    let savedTab = 'categories';
+    try {
+      savedTab = localStorage.getItem(TAB_KEY) || 'categories';
+    } catch (_) {
+      /* ignore */
+    }
+    selectSidebarTab(savedTab, false);
+
+    el.sidebarSectionToggles.forEach((btn) => {
+      btn.addEventListener('click', () => selectSidebarTab(btn.getAttribute('data-section'), true));
+    });
   }
 
-  function showView(view) {
+  const VIEWS = ['prompts', 'editor', 'workspaces', 'chains', 'modifiers', 'rules', 'settings', 'data', 'plan'];
+  let currentView = 'prompts';
+
+  /**
+   * Switch views. Each switch is a browser history entry, so Back and
+   * Forward move between views and a reload returns to the same one.
+   * Returns false when the user kept unsaved changes and stayed put.
+   */
+  function showView(view, opts) {
+    const fromHistory = !!(opts && opts.fromHistory);
+    if (VIEWS.indexOf(view) === -1) view = 'prompts';
     if (view !== 'editor' && isEditorDirty()) {
-      if (!window.confirm('You have unsaved changes in this prompt. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this prompt. Discard them?')) return false;
       editorInitialSnapshot = null;
     }
     if (view !== 'workspaces' && isWorkspaceDirty()) {
-      if (!window.confirm('You have unsaved changes in this workspace. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this workspace. Discard them?')) return false;
       wsInitialSnapshot = null;
     }
     if (view !== 'chains' && isChainDirty()) {
-      if (!window.confirm('You have unsaved changes in this chain. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this chain. Discard them?')) return false;
       chainInitialSnapshot = null;
     }
     if (view !== 'modifiers' && isModifierDirty()) {
-      if (!window.confirm('You have unsaved changes in this modifier. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this modifier. Discard them?')) return false;
       modInitialSnapshot = null;
     }
     if (view !== 'rules' && isRuleDirty()) {
-      if (!window.confirm('You have unsaved changes in this site rule. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this site rule. Discard them?')) return false;
       ruleInitialSnapshot = null;
     }
     // The editor belongs to the library, so the library stays lit while editing.
@@ -682,6 +695,50 @@ document.addEventListener('DOMContentLoaded', () => {
     if (view === 'modifiers') renderModifiers();
     if (view === 'rules') renderRules();
     if (window.scrollY > 0) window.scrollTo({ top: 0 });
+    if (!fromHistory && view !== currentView && window.history && window.history.pushState) {
+      try {
+        window.history.pushState({ view }, '', window.location.pathname + '#' + view);
+      } catch (e) {
+        /* history is unavailable in some embedded contexts */
+      }
+    }
+    currentView = view;
+    return true;
+  }
+
+  function bindHistory() {
+    window.addEventListener('popstate', () => {
+      let view = (window.location.hash || '').replace('#', '') || 'prompts';
+      // The editor's contents are not in the URL; Back/Forward onto it shows
+      // the library rather than an empty or stale form.
+      if (view === 'editor' && currentView !== 'editor') {
+        view = 'prompts';
+        try {
+          window.history.replaceState({ view }, '', window.location.pathname + '#prompts');
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      if (!showView(view, { fromHistory: true })) {
+        // The user chose to keep unsaved work: put the address back.
+        try {
+          window.history.pushState({ view: currentView }, '', window.location.pathname + '#' + currentView);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    });
+    // A reload or bookmark with #view opens that view, unless the URL also
+    // carries a hand-off (?edit=, ?view=) that handleUrlParams takes care of.
+    const start = (window.location.hash || '').replace('#', '');
+    if (!window.location.search && start && start !== 'editor' && VIEWS.indexOf(start) !== -1) {
+      showView(start, { fromHistory: true });
+    }
+    try {
+      window.history.replaceState({ view: currentView }, '', window.location.pathname + window.location.search + '#' + currentView);
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   /**
@@ -1243,9 +1300,16 @@ document.addEventListener('DOMContentLoaded', () => {
       openCategoryModal({});
     });
 
+    // Debounced: a full table render per keystroke is visible jank on a
+    // library of 150+ prompts.
+    let searchTimer = null;
     el.search.addEventListener('input', () => {
       searchQuery = el.search.value.trim();
-      renderTable();
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        searchTimer = null;
+        renderTable();
+      }, 120);
     });
 
     el.createBtn.addEventListener('click', () => {
@@ -1867,7 +1931,7 @@ document.addEventListener('DOMContentLoaded', () => {
           'Delete ' + ids.length + ' prompt' + (ids.length === 1 ? '' : 's') + '?\n\n' +
           (own ? '• ' + own + ' of your own will be deleted\n' : '') +
           (builtins ? '• ' + builtins + ' built-in(s) will be hidden\n' : '') +
-          'A backup is taken first, so you can undo this from Backup & import.';
+          'A restore point is saved first, so you can undo this from Backup & sync.';
         if (!window.confirm(message)) return;
         try {
           const res = await store.bulkDelete(ids);
@@ -2195,7 +2259,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function openEditor(prompt) {
     if (isEditorDirty()) {
-      if (!window.confirm('You have unsaved changes in this prompt. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this prompt. Discard them?')) return false;
     }
     clearEditorErrors();
 
@@ -2523,16 +2587,9 @@ document.addEventListener('DOMContentLoaded', () => {
       : '<span class="row-chip row-chip-blocks" title="Uses context blocks. On Free they are inserted as written; Pro fills them in.">Pro · context</span>';
   }
 
-  // Free users hear once per visit that the old text was kept. Repeating it on
-  // every save would turn a useful fact into a nag.
-  let toldAboutHistory = false;
-
   function savedMessage(versionKept) {
     if (!versionKept) return 'Saved.';
-    if (store.isPro()) return 'Saved. The earlier version is in History.';
-    if (toldAboutHistory) return 'Saved.';
-    toldAboutHistory = true;
-    return 'Saved. The earlier version is kept in History; Pro can restore it.';
+    return 'Saved. The earlier version is in History.';
   }
 
   function paintHistoryButton(id) {
@@ -2547,14 +2604,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function openHistoryModal(id) {
     const versions = store.getHistory(id);
     const current = store.getById(id);
-    const pro = store.isPro();
     el.historyTitle.textContent = 'Earlier versions of ' + (current ? '“' + current.title + '”' : 'this prompt');
-    el.historyNote.textContent = pro
-      ? 'Restoring puts that version back and keeps the current text as a new version, so you can undo it.'
-      : 'OmniPrompt keeps these for you. You can view and copy any version; one-click restore is part of Pro.';
+    el.historyNote.textContent =
+      'Restoring puts that version back and keeps the current text as a new version, so you can undo it.';
 
     if (!versions.length) {
-      el.historyList.innerHTML = '<li class="history-empty">No earlier versions yet. They appear after you edit and save.</li>';
+      el.historyList.innerHTML = '<li class="history-empty">No earlier versions yet. They appear after you save an edit.</li>';
     } else {
       el.historyList.innerHTML = versions
         .map((v, idx) => {
@@ -2576,7 +2631,7 @@ document.addEventListener('DOMContentLoaded', () => {
             '<button type="button" class="btn-secondary btn-mini" data-restore="' +
             idx +
             '">' +
-            (pro ? 'Restore' : '🔒 Restore (Pro)') +
+            'Restore' +
             '</button>' +
             '</div>' +
             '</li>'
@@ -2602,11 +2657,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           await store.restoreVersion(id, index);
         } catch (err) {
-          if (err && err.code === 'PRO_REQUIRED') {
-            closeHistoryModal();
-            openUpgradeModal('history');
-            return;
-          }
           showToast((err && err.message) || 'Could not restore that version.');
           return;
         }
@@ -2750,7 +2800,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const blocks = template.listBlocks(el.fTemplate.value);
     if (!vars.length && !blocks.length) {
       el.variablePreview.innerHTML =
-        '<div class="variable-empty">No placeholders. This prompt inserts exactly as written.</div>';
+        '<div class="variable-empty">No blanks. This prompt is inserted as written.</div>';
       return;
     }
 
@@ -2943,7 +2993,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (isWorkspaceDirty()) {
-      if (!window.confirm('You have unsaved changes in this workspace. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this workspace. Discard them?')) return false;
     }
     const w = ws || { name: '', fields: [{ key: 'client_name', value: '' }, { key: 'tone', value: '' }, { key: 'client_brief', value: '' }] };
     editingWorkspaceId = w.id || null;
@@ -3381,7 +3431,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (isChainDirty()) {
-      if (!window.confirm('You have unsaved changes in this chain. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this chain. Discard them?')) return false;
     }
     const c = chain || { title: '', shortcut: '', description: '', steps: [{ title: '', template: '' }, { title: '', template: '' }] };
     editingChainId = c.id || null;
@@ -3602,7 +3652,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (isModifierDirty()) {
-      if (!window.confirm('You have unsaved changes in this modifier. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this modifier. Discard them?')) return false;
     }
     const m = mod || { title: '', placement: 'quote', description: '', instruction: '' };
     editingModifierId = m.id || null;
@@ -3768,36 +3818,71 @@ document.addEventListener('DOMContentLoaded', () => {
         .join('');
   }
 
-  function checkRuleHostPermissions() {
+  /** The origin pattern Chrome needs for a rule host; `*.x.com` covers x.com too. */
+  function ruleHostOrigins(host) {
+    const h = String(host || '').trim().toLowerCase();
+    if (!h) return [];
+    if (h.indexOf('*.') === 0) return ['https://' + h + '/*', 'https://' + h.slice(2) + '/*'];
+    return ['https://' + h + '/*'];
+  }
+
+  function permissionsContain(origins) {
+    return new Promise((resolve) => {
+      if (!chrome.permissions || !chrome.permissions.contains) return resolve(true);
+      try {
+        chrome.permissions.contains({ origins }, (yes) => {
+          void chrome.runtime.lastError;
+          resolve(!!yes);
+        });
+      } catch (err) {
+        // A host Chrome cannot parse is caught by the hosts validation instead.
+        resolve(true);
+      }
+    });
+  }
+
+  // Origins the banner's button will ask for. Kept in memory so the click
+  // handler can call chrome.permissions.request without awaiting first,
+  // which would lose the user gesture.
+  let ruleMissingOrigins = [];
+  let ruleHostCheckSeq = 0;
+
+  /**
+   * Show which rule hosts OmniPrompt cannot run on yet. Site rules only rank
+   * prompts where OmniPrompt is running, so a rule for Gmail does nothing
+   * until Gmail is turned on.
+   */
+  async function checkRuleHostPermissions() {
     if (!el.ruleHostPermBanner || !el.ruleHosts) return;
-    const val = el.ruleHosts.value;
-    const hosts = val.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    if (!hosts.length) {
+    const seq = ++ruleHostCheckSeq;
+    const hosts = el.ruleHosts.value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const missingHosts = [];
+    const missingOrigins = [];
+    if (hosts.length && !(await permissionsContain(['<all_urls>']))) {
+      for (const h of hosts) {
+        const origins = ruleHostOrigins(h);
+        if (origins.length && !(await permissionsContain(origins))) {
+          missingHosts.push(h);
+          origins.forEach((o) => missingOrigins.indexOf(o) === -1 && missingOrigins.push(o));
+        }
+      }
+    }
+    if (seq !== ruleHostCheckSeq) return; // a newer keystroke already ran
+    ruleMissingOrigins = missingOrigins;
+    if (!missingHosts.length) {
       el.ruleHostPermBanner.style.display = 'none';
       return;
     }
-    const currentSettings = store.getSettings();
-    if (currentSettings && currentSettings.runOnAllSites) {
-      el.ruleHostPermBanner.style.display = 'none';
-      return;
+    if (el.ruleHostPermText) {
+      el.ruleHostPermText.textContent =
+        'OmniPrompt is not turned on for ' +
+        (missingHosts.length === 1 ? missingHosts[0] : missingHosts.slice(0, -1).join(', ') + ' and ' + missingHosts[missingHosts.length - 1]) +
+        ' yet, so this rule cannot apply there.';
     }
-    let unpermitted = null;
-    for (let i = 0; i < hosts.length; i++) {
-      let h = hosts[i].replace(/^\*\./, '');
-      if (h && !store.isSitePermitted(h)) {
-        unpermitted = h;
-        break;
-      }
+    if (el.btnRuleGrantHost) {
+      el.btnRuleGrantHost.textContent = missingHosts.length === 1 ? 'Turn on for this site' : 'Turn on for these sites';
     }
-    if (unpermitted) {
-      if (el.ruleHostPermText) {
-        el.ruleHostPermText.textContent = 'OmniPrompt is not turned on for ' + unpermitted + ' yet.';
-      }
-      el.ruleHostPermBanner.setAttribute('data-host', unpermitted);
-      el.ruleHostPermBanner.style.display = 'flex';
-    } else {
-      el.ruleHostPermBanner.style.display = 'none';
-    }
+    el.ruleHostPermBanner.style.display = 'flex';
   }
 
   function openRuleEditor(rule) {
@@ -3806,7 +3891,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (isRuleDirty()) {
-      if (!window.confirm('You have unsaved changes in this site rule. Discard them?')) return;
+      if (!window.confirm('You have unsaved changes in this site rule. Discard them?')) return false;
     }
     const r = rule || { name: '', hosts: [], tags: [], folders: [] };
     editingRuleId = r.id || null;
@@ -3847,16 +3932,16 @@ document.addEventListener('DOMContentLoaded', () => {
         let pHosts = '';
         if (preset === 'email') {
           pName = 'Email';
-          pHosts = 'mail.google.com, outlook.live.com, mail.yahoo.com';
+          pHosts = 'mail.google.com, outlook.live.com, outlook.office.com, mail.yahoo.com';
         } else if (preset === 'code') {
           pName = 'Code';
           pHosts = 'github.com, gitlab.com, stackoverflow.com';
         } else if (preset === 'chat') {
           pName = 'Work chat';
-          pHosts = 'slack.com, discord.com, teams.microsoft.com';
+          pHosts = 'app.slack.com, discord.com, teams.microsoft.com';
         } else if (preset === 'docs') {
           pName = 'Docs';
-          pHosts = 'docs.google.com, notion.so, coda.io';
+          pHosts = 'docs.google.com, *.notion.so, coda.io';
         }
         if (el.ruleEditor.hidden) {
           openRuleEditor({ name: pName, hosts: pHosts.split(', ') });
@@ -3874,17 +3959,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (el.btnRuleGrantHost) {
       el.btnRuleGrantHost.addEventListener('click', async () => {
-        const host = el.ruleHostPermBanner.getAttribute('data-host');
-        if (!host) return;
-        const origin = 'https://' + host + '/*';
-        chrome.permissions.request({ origins: [origin] }, async (granted) => {
-          if (granted) {
-            await store.addEnabledSite(host);
-            checkRuleHostPermissions();
-            showToast('Turned on for ' + host + '.');
-          } else {
-            showToast('Permission not granted.');
-          }
+        const origins = ruleMissingOrigins.slice();
+        if (!origins.length) return;
+        chrome.permissions.request({ origins }, (granted) => {
+          void chrome.runtime.lastError;
+          checkRuleHostPermissions();
+          if (typeof renderEnabledSites === 'function') renderEnabledSites();
+          showToast(granted ? 'Turned on. Reload those sites to use OmniPrompt there.' : 'Chrome did not grant access, so nothing changed.');
         });
       });
     }
@@ -3953,7 +4034,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let compareModalPrompt = null;
 
-  function openOptionsCompareModal(promptId) {
+  async function openOptionsCompareModal(promptId) {
     if (!store.isPro()) {
       openUpgradeModal('compare');
       return;
@@ -3966,17 +4047,17 @@ document.addEventListener('DOMContentLoaded', () => {
       el.compareModalTitle.textContent = 'Compare: ' + p.title;
     }
 
-    const allTargets = (window.ChatbotAdapters && window.ChatbotAdapters.COMPARE_TARGETS) ||
-      store.getCompareTargets() || [
-        { id: 'chatgpt', name: 'ChatGPT' },
-        { id: 'claude', name: 'Claude' },
-        { id: 'gemini', name: 'Gemini' },
-        { id: 'copilot', name: 'Copilot' },
-        { id: 'perplexity', name: 'Perplexity' },
-        { id: 'deepseek', name: 'DeepSeek' }
-      ];
+    // The worker opens URLs from the same list, so the ids always match.
+    const allTargets = store.getCompareTargets();
 
-    const lastChosen = store.getLastCompareTargets();
+    // Stored, so it arrives as a promise.
+    let lastChosen = ['chatgpt', 'claude', 'gemini'];
+    try {
+      const saved = await store.getLastCompareTargets();
+      if (Array.isArray(saved) && saved.length) lastChosen = saved;
+    } catch (e) {
+      /* keep the default selection */
+    }
 
     el.compareModalTargets.innerHTML = allTargets
       .map((t) => {
@@ -3989,7 +4070,7 @@ document.addEventListener('DOMContentLoaded', () => {
           (checked ? ' checked' : '') +
           ' />' +
           '<span>' +
-          escapeHtml(t.name) +
+          escapeHtml(t.label || t.name || t.id) +
           '</span>' +
           '</label>'
         );
@@ -4006,17 +4087,18 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    const vars = template.parseVariables(p.template);
-    let previewText = p.template;
-    if (vars.length) {
-      const defValues = {};
-      vars.forEach((v) => {
-        if (v.default) defValues[v.name] = v.default;
-      });
-      previewText = template.render(p.template, defValues);
-    }
+    // Context blocks are expanded as they would be on a chat page. Defaults
+    // are filled in; anything without one shows as [name], and the text box
+    // is editable so those can be filled before starting.
+    const prepared = store.prepareForUse ? store.prepareForUse(p) : { prompt: p };
+    const tpl = (prepared.prompt && prepared.prompt.template) || p.template;
+    const defValues = {};
+    template.parseVariables(tpl).forEach((v) => {
+      if (v.default) defValues[v.name] = v.default;
+    });
+    const previewText = template.render(tpl, defValues);
     if (el.compareModalPreview) {
-      el.compareModalPreview.textContent = previewText;
+      el.compareModalPreview.value = previewText;
     }
     if (el.compareModalWarning) {
       el.compareModalWarning.style.display = 'none';
@@ -4054,12 +4136,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const layoutRadio = document.querySelector('input[name="opt-compare-layout"]:checked');
-        const layout = layoutRadio ? layoutRadio.value : 'window';
+        const layout = layoutRadio ? layoutRadio.value : 'tabs';
         const autoSend = el.compareModalAutosend ? el.compareModalAutosend.checked : false;
 
         store.setLastCompareTargets(targets);
 
-        const promptText = el.compareModalPreview ? el.compareModalPreview.textContent : compareModalPrompt.template;
+        const promptText = el.compareModalPreview ? el.compareModalPreview.value : compareModalPrompt.template;
+        if (!String(promptText || '').trim()) {
+          if (el.compareModalWarning) {
+            el.compareModalWarning.textContent = 'There is no text to send.';
+            el.compareModalWarning.style.display = 'block';
+          }
+          return;
+        }
 
         el.compareModalStart.disabled = true;
         el.compareModalStart.textContent = 'Starting…';
@@ -4069,18 +4158,27 @@ document.addEventListener('DOMContentLoaded', () => {
             action: 'start_compare',
             text: promptText,
             targets: targets,
-            layout: layout,
-            autoSend: autoSend
+            layout: layout === 'tabs' ? 'tabs' : 'tiled',
+            autoSend: autoSend,
+            screenLeft: typeof screen.availLeft === 'number' ? screen.availLeft : 0,
+            screenTop: typeof screen.availTop === 'number' ? screen.availTop : 0,
+            screenWidth: screen.availWidth,
+            screenHeight: screen.availHeight
           },
           (res) => {
+            void chrome.runtime.lastError;
             el.compareModalStart.disabled = false;
             el.compareModalStart.textContent = 'Start comparison';
             if (res && res.ok) {
               closeOptionsCompareModal();
-              showToast('Comparison opened across ' + targets.length + ' AIs.');
+              compareRunsFromHere.add(res.runId);
+              showToast('Opening ' + res.count + (res.count === 1 ? ' AI' : ' AIs') + '. The text goes into each chat box.');
             } else {
               if (el.compareModalWarning) {
-                el.compareModalWarning.textContent = (res && res.error) || 'Failed to start comparison.';
+                el.compareModalWarning.textContent =
+                  res && res.error === 'PRO_REQUIRED'
+                    ? 'Compare across AIs is part of OmniPrompt Pro.'
+                    : (res && res.error) || 'Could not start. Reload this page and try again.';
                 el.compareModalWarning.style.display = 'block';
               }
             }
@@ -4088,6 +4186,21 @@ document.addEventListener('DOMContentLoaded', () => {
         );
       });
     }
+  }
+
+  // Runs started from this page, so a summary for another tab's run is ignored.
+  const compareRunsFromHere = new Set();
+  if (chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (!msg || msg.action !== 'compare_summary' || !compareRunsFromHere.has(msg.runId)) return;
+      compareRunsFromHere.delete(msg.runId);
+      const failed = Array.isArray(msg.failed) ? msg.failed : [];
+      showToast(
+        failed.length
+          ? 'Compare: inserted in ' + (msg.total - failed.length) + ' of ' + msg.total + '. ' + failed.map((x) => x.label + ': ' + x.message + '.').join(' ')
+          : 'Compare: the text is in all ' + msg.total + ' chats.'
+      );
+    });
   }
 
   /* =====================================================================
@@ -4330,61 +4443,143 @@ document.addEventListener('DOMContentLoaded', () => {
     paintLicenseState();
   }
 
+  /*
+   * The Pro card shows six benefits, not ten. A short list is read; a long
+   * one is skimmed and doubted. These lead because they are the ones a
+   * Free user cannot approximate. The rest sit behind "See all".
+   */
+  const PLAN_HEADLINE_FEATURES = ['limit', 'workspaces', 'blocks', 'chains', 'compare', 'sync'];
+
+  // Where each unlocked feature lives, so the Pro page is a way in, not a receipt.
+  const PRO_FEATURE_VIEWS = {
+    limit: 'prompts',
+    workspaces: 'workspaces',
+    chains: 'chains',
+    sync: 'data',
+    customModifiers: 'modifiers',
+    siteRules: 'rules'
+  };
+
+  function headlineFeatures(features, lead) {
+    const order = PLAN_HEADLINE_FEATURES.slice();
+    if (lead && order.indexOf(lead) === -1) order.unshift(lead);
+    if (lead) order.sort((a, b) => (a === lead ? -1 : b === lead ? 1 : 0));
+    return order
+      .map((id) => features.find((f) => f.id === id))
+      .filter(Boolean);
+  }
+
   function paintLicenseState() {
-    if (!el.licenseTierPill) return;
+    if (!el.licenseCard) return;
     paintCheckoutLinks();
+    const info = store.getProInfo();
     const isPro = store.isPro ? store.isPro() : false;
     const count = store.getCustomCount ? store.getCustomCount() : 0;
-    const limit = store.getFreeLimit ? store.getFreeLimit() : 20;
+    const limit = store.getFreeLimit ? store.getFreeLimit() : info.freeLimit;
+    const uses = store.getTotalUses ? store.getTotalUses() : 0;
     const lic = store.getLicense ? store.getLicense() : null;
-
-    if (el.customPromptCount) el.customPromptCount.textContent = String(count);
-
-    const price = store.getProInfo().price;
     const builtIns = store.getBuiltins().length;
+    const features = info.features || [];
 
-    // The comparison table reads the real numbers, so it cannot drift from the code.
+    // Every number on the page comes from the store, so it cannot drift from the code.
     const setCell = (cellId, text) => {
       const cell = document.getElementById(cellId);
       if (cell) cell.textContent = text;
     };
     setCell('plan-builtins', 'All ' + builtIns);
     setCell('plan-free-limit', String(limit));
-    setCell('plan-pro-price', price + ' once');
+    setCell('plan-pro-price', info.price + ' once');
+    setCell('plan-free-builtins', String(builtIns));
+    setCell('plan-free-own', String(limit));
     const compare = document.getElementById('plan-compare');
     if (compare) compare.setAttribute('data-plan', isPro ? 'pro' : 'free');
+    el.licenseCard.setAttribute('data-plan', isPro ? 'pro' : 'free');
+
+    const showFree = !isPro;
+    [el.licenseFreeActions, el.planTiers, el.planKeyBox, el.planFaq].forEach((node) => {
+      if (node) node.style.display = showFree ? '' : 'none';
+    });
+    if (el.licenseActiveDetails) el.licenseActiveDetails.style.display = isPro ? '' : 'none';
 
     if (isPro) {
-      el.licenseTierPill.textContent = 'You are on Pro';
-      el.licenseTierPill.className = 'pro-tier-pill pro';
-      el.licenseTierDesc.innerHTML =
-        'OmniPrompt Pro is <strong>active</strong> for life: unlimited prompts, client workspaces, saved values, ' +
-        'stepped chains, folder sync, library tools, earlier versions and context blocks.' +
-        (store.getProInfo().mode === 'test' ? ' <em>(Dodo test mode)</em>' : '');
-      if (el.licenseActiveDetails) el.licenseActiveDetails.style.display = 'flex';
+      if (el.planActiveSub) {
+        el.planActiveSub.textContent =
+          'Yours for life. It keeps working offline.' + (info.mode === 'test' ? ' (Dodo test mode)' : '');
+      }
       if (lic && lic.key && el.licenseMaskedKey) {
         const clean = lic.key;
-        const masked = clean.length > 8 ? '••••-••••-' + clean.slice(-4) : clean;
-        el.licenseMaskedKey.textContent = masked;
+        el.licenseMaskedKey.textContent = clean.length > 8 ? '••••-••••-' + clean.slice(-4) : clean;
       }
-      if (el.licenseFreeActions) el.licenseFreeActions.style.display = 'none';
-      if (el.licenseActiveActions) el.licenseActiveActions.style.display = 'block';
-    } else {
-      el.licenseTierPill.textContent = 'You are on Free';
-      el.licenseTierPill.className = 'pro-tier-pill free';
-      el.licenseTierDesc.innerHTML =
-        'Free includes all ' +
-        builtIns +
-        ' built-in prompts and <strong>' +
-        count +
-        ' / ' +
-        limit +
-        '</strong> of your own, plus backups and restore. Pro is a one-time ' +
-        escapeHtml(price) +
-        ': unlimited prompts, client workspaces, saved values, stepped chains, folder sync and library tools.';
-      if (el.licenseActiveDetails) el.licenseActiveDetails.style.display = 'none';
-      if (el.licenseFreeActions) el.licenseFreeActions.style.display = 'flex';
-      if (el.licenseActiveActions) el.licenseActiveActions.style.display = 'none';
+      if (el.planActiveFeatures) {
+        el.planActiveFeatures.textContent = '';
+        features.forEach((f) => {
+          const li = document.createElement('li');
+          li.className = 'plan-active-item';
+          const view = PRO_FEATURE_VIEWS[f.id];
+          const body = document.createElement(view ? 'button' : 'div');
+          body.className = 'plan-active-link';
+          if (view) {
+            body.type = 'button';
+            body.addEventListener('click', () => showView(view));
+          }
+          const title = document.createElement('strong');
+          title.textContent = f.title;
+          const text = document.createElement('span');
+          text.textContent = f.text;
+          body.append(title, text);
+          li.append(body);
+          el.planActiveFeatures.append(li);
+        });
+      }
+      return;
+    }
+
+    // Free: show where they are with their own numbers. Nothing invented.
+    if (el.customPromptCount) el.customPromptCount.textContent = String(Math.min(count, limit));
+    if (el.planUsageLimit) el.planUsageLimit.textContent = String(limit);
+    if (el.planUsageFill) {
+      const pct = limit > 0 ? Math.min(100, Math.round((count / limit) * 100)) : 100;
+      el.planUsageFill.style.width = pct + '%';
+      el.planUsageFill.classList.toggle('is-near', pct >= 80);
+    }
+    if (el.planUsageProof) {
+      el.planUsageProof.textContent = '';
+      if (uses >= 5) {
+        const strong = document.createElement('strong');
+        strong.textContent = uses + ' prompts';
+        el.planUsageProof.append("You've inserted ", strong, ' with OmniPrompt so far.');
+        el.planUsageProof.hidden = false;
+      } else {
+        el.planUsageProof.hidden = true;
+      }
+    }
+
+    if (el.planProAmount) el.planProAmount.textContent = info.price;
+    if (el.planProFeatures) {
+      el.planProFeatures.textContent = '';
+      headlineFeatures(features).forEach((f) => {
+        const li = document.createElement('li');
+        li.textContent = f.title;
+        li.title = f.text;
+        el.planProFeatures.append(li);
+      });
+    }
+    if (el.planSeeAll) {
+      const more = Math.max(0, features.length - headlineFeatures(features).length);
+      el.planSeeAll.textContent = more > 0 ? 'See all ' + features.length + ' Pro features' : 'Compare the plans';
+    }
+    // "$0" in the same currency as the Pro price, so the two cards compare at a glance.
+    if (el.planFreeAmount) el.planFreeAmount.textContent = String(info.price).replace(/[\d.,]+/, '0');
+  }
+
+  /** Opens the full comparison and brings it into view. */
+  function revealPlanCompare() {
+    if (!el.planCompareBox) return;
+    el.planCompareBox.open = true;
+    try {
+      el.planCompareBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {
+      // Older engines without smooth scroll options.
     }
   }
 
@@ -4409,11 +4604,6 @@ document.addEventListener('DOMContentLoaded', () => {
         eyebrow: 'Free limit reached',
         headline: 'Keep building your library.',
         sub: 'Your ' + limit + ' prompts stay yours and keep working. Pro removes the cap.'
-      },
-      history: {
-        eyebrow: 'Version history',
-        headline: 'Undo any edit in one click.',
-        sub: 'Your earlier versions are already saved. Pro brings them back.'
       },
       blocks: {
         eyebrow: 'Context blocks',
@@ -4476,7 +4666,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const UPGRADE_REASONS = [
     'limit',
-    'history',
     'blocks',
     'workspaces',
     'sets',
@@ -4534,9 +4723,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // The list comes from the store, so it always matches what Pro does.
     // Lead with the benefit that matches what they tried to do.
+    // Three benefits, not ten: the dialog answers one question ("what do I
+    // get for this?"), and the full list is one click away on the Plan page.
     if (el.upgradeModalBenefits) {
-      const features = (info.features || []).slice();
-      features.sort((a, b) => (a.id === key ? -1 : b.id === key ? 1 : 0));
+      const all = info.features || [];
+      const features = headlineFeatures(all, all.some((f) => f.id === key) ? key : null).slice(0, 3);
+      if (el.upgradeModalSeeAll) {
+        const more = Math.max(0, all.length - features.length);
+        el.upgradeModalSeeAll.textContent = more > 0 ? '+ ' + more + ' more in Pro' : 'See everything in Pro';
+      }
       el.upgradeModalBenefits.innerHTML = features
         .map(
           (f) =>
@@ -4661,12 +4856,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (el.deactivateLicenseBtn) {
-      el.deactivateLicenseBtn.addEventListener('click', async () => {
-        if (!window.confirm('Deactivate Pro license on this browser and revert to Free tier?')) return;
+      const dlg = document.getElementById('license-deactivate-modal');
+      const keyBox = document.getElementById('license-deactivate-key');
+      const closeDlg = () => { dlg.style.display = 'none'; };
+      el.deactivateLicenseBtn.addEventListener('click', () => {
+        const lic = store.getLicense ? store.getLicense() : null;
+        keyBox.value = lic && lic.key ? lic.key : '';
+        dlg.style.display = '';
+        document.getElementById('btn-license-deactivate-copy').focus();
+      });
+      document.getElementById('btn-license-deactivate-copy').addEventListener('click', async () => {
+        if (!keyBox.value) return;
+        const copied = await copyText(keyBox.value);
+        if (!copied) keyBox.select();
+        showToast(copied ? 'Licence key copied.' : 'Could not copy. The key is selected, press Ctrl+C.');
+      });
+      document.getElementById('btn-close-license-deactivate').addEventListener('click', closeDlg);
+      document.getElementById('btn-license-deactivate-cancel').addEventListener('click', closeDlg);
+      dlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDlg(); });
+      document.getElementById('btn-license-deactivate-confirm').addEventListener('click', async () => {
+        closeDlg();
         await store.deactivateLicense();
         paintLicenseState();
         updateCounts();
-        showToast('License deactivated.');
+        showToast('Licence deactivated.');
       });
     }
 
@@ -5079,15 +5292,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function bindDataView() {
     el.exportBtn.addEventListener('click', () => {
-      const includeLibrary = el.exportIncludeLibrary.checked;
-      const bundle = store.exportBundle({ includeLibrary });
+      // Built-ins ship with the extension, so the file holds only the user's own work.
+      const bundle = store.exportBundle({ includeLibrary: false });
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download =
-        'omniprompt-' +
-        (includeLibrary ? 'full-' : 'mine-') +
+        'omniprompt-mine-' +
         new Date().toISOString().slice(0, 10) +
         '.json';
       document.body.appendChild(a);
@@ -5318,6 +5530,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (el.upgradeModalClose) el.upgradeModalClose.addEventListener('click', closeUpgradeModal);
     if (el.upgradeModalCancel) el.upgradeModalCancel.addEventListener('click', closeUpgradeModal);
+    if (el.upgradeModalSeeAll) {
+      el.upgradeModalSeeAll.addEventListener('click', () => {
+        closeUpgradeModal();
+        if (showView('plan') !== false) revealPlanCompare();
+      });
+    }
+    if (el.planSeeAll) el.planSeeAll.addEventListener('click', revealPlanCompare);
     if (el.upgradeModal) {
       el.upgradeModal.addEventListener('mousedown', (e) => {
         if (e.target === el.upgradeModal) closeUpgradeModal();
@@ -5402,6 +5621,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (e) => {
       if (isImeKey(e)) return;
       if (e.key !== 'Escape') return;
+      if (el.compareModal && el.compareModal.style.display === 'flex') {
+        e.preventDefault();
+        closeOptionsCompareModal();
+        return;
+      }
       if (el.tidyModal && el.tidyModal.style.display === 'flex') {
         e.preventDefault();
         closeTidyModal();
@@ -5431,6 +5655,75 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         closeVariableModal();
       }
+    });
+  }
+
+  /**
+   * Every dialog on this page is a .modal-backdrop shown with display:flex.
+   * One observer gives them all the same keyboard behaviour: focus moves in
+   * on open, Tab stays inside, and focus returns to the opener on close.
+   */
+  function bindModalFocus() {
+    const openers = new WeakMap();
+    const visible = (m) => m.style.display === 'flex';
+    const focusables = (m) =>
+      Array.from(m.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')).filter(
+        (n) => !n.disabled && n.offsetParent !== null
+      );
+    const modals = Array.from(document.querySelectorAll('.modal-backdrop'));
+    const observer = new MutationObserver((records) => {
+      records.forEach((r) => {
+        const m = r.target;
+        if (visible(m) && !openers.has(m)) {
+          openers.set(m, document.activeElement);
+          // Leave focus alone if the opener already placed it inside.
+          setTimeout(() => {
+            if (!m.contains(document.activeElement)) {
+              const items = focusables(m);
+              const pick = items.find((n) => n.matches('input, textarea, select')) || items[0];
+              if (pick) pick.focus();
+            }
+          }, 60);
+        } else if (!visible(m) && openers.has(m)) {
+          const back = openers.get(m);
+          openers.delete(m);
+          if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
+        }
+      });
+    });
+    modals.forEach((m) => observer.observe(m, { attributes: true, attributeFilter: ['style'] }));
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const open = modals.filter(visible).pop();
+      if (!open) return;
+      const items = focusables(open);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = open.contains(document.activeElement);
+      if (e.shiftKey && (document.activeElement === first || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+  }
+
+  /** Show macOS key names on a Mac, where Ctrl+S is really Cmd+S. */
+  function paintPlatformKeys() {
+    // Whatever palette shortcut the user set, in their platform's key names.
+    const s = store.getSettings();
+    if (s.enablePalette && s.paletteHotkey) {
+      const label = store.formatHotkey(s.paletteHotkey, store.isMacPlatform());
+      document.querySelectorAll('.omni-palette-hotkey').forEach((n) => {
+        n.textContent = label;
+      });
+    }
+    if (!store.isMacPlatform || !store.isMacPlatform()) return;
+    document.querySelectorAll('.editor-save-hint').forEach((n) => {
+      n.innerHTML = '<kbd>⌘</kbd><kbd>S</kbd>';
     });
   }
 

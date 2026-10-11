@@ -21,7 +21,7 @@
   --border-strong: #d4d4d8;
   --text: #18181b;
   --text-2: #52525b;
-  --text-3: #71717a;
+  --text-3: #6b6b74;
   --ink: #18181b;
   --ink-hover: #2c2c31;
   --ink-text: #fafafa;
@@ -342,7 +342,9 @@
 /* =========================================================
    VARIABLE FORM
    ========================================================= */
-.omni-variable-modal { width: 600px; max-width: 94vw; }
+.omni-variable-modal { width: 600px; max-width: min(94vw, calc(100vw - 24px)); min-width: 0; }
+/* Buttons wrap rather than pushing the form past the window edge. */
+.omni-variable-modal .omni-modal-footer { flex-wrap: wrap; row-gap: 8px; }
 
 .omni-modal-header {
   display: flex;
@@ -783,4 +785,12 @@ select.omni-form-input { cursor: pointer; }
   .omni-palette-modal, .omni-variable-modal { width: calc(100vw - 24px); }
   .omni-modal-footer { flex-wrap: wrap; }
   .omni-palette-footer > div:first-child span:nth-child(3) { display: none; }
+}
+
+/* Windows High Contrast / forced colours: keep focus visible and panels outlined. */
+@media (forced-colors: active) {
+  .omni-form-input:focus-visible, .omni-form-textarea:focus-visible,
+  .omni-palette-input:focus-visible, .omni-btn:focus-visible { outline: 2px solid Highlight; outline-offset: 1px; }
+  .omni-palette-modal, .omni-variable-modal, .omni-slash-menu, .omni-floating-toast, #omni-chain-runner { border: 1px solid CanvasText; }
+  .omni-palette-item.selected, .omni-slash-item.selected { outline: 2px solid Highlight; }
 }

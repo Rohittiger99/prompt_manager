@@ -65,61 +65,51 @@
       </nav>
 
       <div class="sidebar-categories">
-        <div class="sidebar-section-head">
-          <button type="button" class="sidebar-cat-title sidebar-section-toggle" data-section="categories" aria-expanded="true" title="Collapse or expand Categories">
-            <svg class="ico ico-xs section-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-            <span>Categories</span>
+        <div class="sidebar-tabs" role="tablist" aria-label="Browse by">
+          <button type="button" role="tab" class="sidebar-tab sidebar-section-toggle" data-section="categories" aria-selected="true">Categories</button>
+          <button type="button" role="tab" class="sidebar-tab sidebar-section-toggle" data-section="folders" aria-selected="false">Folders</button>
+          <button type="button" role="tab" class="sidebar-tab sidebar-section-toggle" data-section="tags" aria-selected="false">Tags</button>
+          <span class="sidebar-tabs-spacer"></span>
+          <button type="button" id="btn-add-category" class="sidebar-add" title="New category" aria-label="New category">
+            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
           </button>
-          <button type="button" id="btn-add-category" class="sidebar-add" title="Add a category" aria-label="Add a category">
+          <button type="button" id="btn-add-folder" class="sidebar-add" title="New folder" aria-label="New folder" hidden>
             <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
           </button>
         </div>
-        <div class="cat-list" id="sidebar-cat-list"></div>
-
-        <div class="sidebar-section-head sidebar-section-gap">
-          <button type="button" class="sidebar-cat-title sidebar-section-toggle" data-section="folders" aria-expanded="true" title="Collapse or expand Folders">
-            <svg class="ico ico-xs section-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-            <span>Folders</span>
-          </button>
-          <button type="button" id="btn-add-folder" class="sidebar-add" title="Add a folder" aria-label="Add a folder">
-            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-          </button>
-        </div>
-        <div class="cat-list" id="sidebar-folder-list"></div>
-
-        <div class="sidebar-section-head sidebar-section-gap">
-          <button type="button" class="sidebar-cat-title sidebar-section-toggle" data-section="tags" aria-expanded="true" title="Collapse or expand Tags">
-            <svg class="ico ico-xs section-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-            <span>Tags</span>
-          </button>
-        </div>
-        <div class="tag-cloud" id="sidebar-tag-list"></div>
+        <div class="cat-list" id="sidebar-cat-list" role="tabpanel"></div>
+        <div class="cat-list is-collapsed" id="sidebar-folder-list" role="tabpanel"></div>
+        <div class="tag-cloud is-collapsed" id="sidebar-tag-list" role="tabpanel"></div>
       </div>
 
       <div class="sidebar-footer">
-        <nav class="sidebar-nav" aria-label="Settings and help">
-          <button type="button" class="nav-item" data-view="settings" title="Settings">
+        <nav class="sidebar-nav sidebar-dock" aria-label="Settings and help">
+          <button type="button" class="nav-item" data-view="settings" title="Settings" aria-label="Settings">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"></path><circle cx="15" cy="6.5" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="17.5" r="2"></circle></svg>
             <span class="nav-label">Settings</span>
           </button>
-          <button type="button" class="nav-item" data-view="data" title="Backup &amp; import">
+          <button type="button" class="nav-item" data-view="data" title="Backup &amp; sync" aria-label="Backup and sync">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="2.7"></ellipse><path d="M4.5 6v6c0 1.5 3.4 2.7 7.5 2.7s7.5-1.2 7.5-2.7V6"></path><path d="M4.5 12v6c0 1.5 3.4 2.7 7.5 2.7s7.5-1.2 7.5-2.7v-6"></path></svg>
-            <span class="nav-label">Backup &amp; import</span>
+            <span class="nav-label">Backup &amp; sync</span>
           </button>
-          <button type="button" class="nav-item" data-view="plan" title="Plan &amp; Pro">
+          <button type="button" class="nav-item" data-view="plan" title="Plan" aria-label="Plan">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11l3.5 5.2L12 20.5 3 8.7z"></path><path d="M3 8.7h18M9.3 3.5 8 8.7l4 11.8 4-11.8-1.3-5.2"></path></svg>
             <span class="nav-label">Plan</span>
             <span class="nav-status" id="sidebar-stat"></span>
           </button>
-          <button type="button" class="nav-item" id="nav-btn-guide" title="Guide and practice">
+          <button type="button" class="nav-item" id="nav-btn-guide" title="Guide" aria-label="Guide">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9.3a2.5 2.5 0 1 1 3.6 2.4c-.7.4-1.2 1-1.2 1.8v.3"></path><path d="M12 17.2h.01"></path></svg>
             <span class="nav-label">Guide and practice</span>
             <svg class="ico ico-sm nav-external" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"></path></svg>
           </button>
         </nav>
-        <div class="sidebar-shortcuts-hint">
-          <span class="hint-label">Quick palette</span>
-          <kbd class="kbd-mini">Alt+K</kbd>
+        <div class="sidebar-theme">
+          <span class="hint-label">Theme</span>
+          <div class="theme-switch" role="group" aria-label="Colour theme">
+            <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></button>
+            <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"></path></svg></button>
+            <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg></button>
+          </div>
         </div>
       </div>
     </aside>
@@ -196,8 +186,7 @@
 
           <div class="editor-main">
             <div id="builtin-notice" class="editor-notice" style="display: none;">
-              This is one of the built-in prompts. Your changes are saved as an overlay,
-              so <strong>Restore the built-in library</strong> can always put it back.
+              Built-in prompt. Your edits sit on top of it, and you can undo them.
             </div>
 
             <div class="form-group">
@@ -213,7 +202,7 @@
 
               <div class="variable-token-helper">
                 <div class="token-helper-header">
-                  <span>Add a blank that the form asks for each time</span>
+                  <span>Add a blank</span>
                 </div>
                 <div class="token-chips-bar" id="options-token-chips">
                   <button type="button" class="token-chip" data-insert="{{variable}}" title="Asks you for a value each time">{{variable}}</button>
@@ -234,11 +223,11 @@
                     <div><dt><code>{{language|Python}}</code></dt><dd>Starts filled with Python. Change it when you need to.</dd></div>
                     <div><dt><code>{{tone:Formal|Friendly}}</code></dt><dd>A dropdown. The first choice is the default.</dd></div>
                     <div><dt><code>{{selection}}</code> <code>{{page_title}}</code> <code>{{url}}</code></dt><dd>Fill themselves from the page you are on.</dd></div>
-                    <div><dt><code>{{@client-brief}}</code></dt><dd>Pulls in the prompt whose shortcut is <code>client-brief</code> (Pro).</dd></div>
-                    <div><dt><code>{{#if var=val}}</code></dt><dd>Conditional block based on value or presence (Pro).</dd></div>
-                    <div><dt><code>{{date+7d}}</code></dt><dd>Date math tokens: +Nd, -Nw, +Nm, +Ny (Pro).</dd></div>
-                    <div><dt><code>{{field!}}</code></dt><dd>Required field: prevents inserting until filled (Pro).</dd></div>
-                    <div><dt><code>{{#repeat item}}</code></dt><dd>Repeatable list block with Add/Remove buttons (Pro).</dd></div>
+                    <div><dt><code>{{@client-brief}}</code></dt><dd>Inserts the prompt with that shortcut (Pro).</dd></div>
+                    <div><dt><code>{{#if var=val}}</code></dt><dd>Shows text only if a field matches (Pro).</dd></div>
+                    <div><dt><code>{{date+7d}}</code></dt><dd>Today plus 7 days, weeks or months (Pro).</dd></div>
+                    <div><dt><code>{{field!}}</code></dt><dd>Must be filled before inserting (Pro).</dd></div>
+                    <div><dt><code>{{#repeat item}}</code></dt><dd>A list you can add to (Pro).</dd></div>
                   </dl>
                 </details>
               </div>
@@ -278,7 +267,7 @@
               <div class="form-group">
                 <label for="edit-site-rules">Show first on these sites</label>
                 <input type="text" id="edit-site-rules" placeholder="e.g. mail.google.com, github.com" aria-describedby="edit-site-rules-note" />
-                <span class="field-note" id="edit-site-rules-note">Hostname or *.domain. Sets site ranking rules for this prompt.</span>
+                <span class="field-note" id="edit-site-rules-note">For example github.com or *.google.com</span>
               </div>
             </div>
 
@@ -293,7 +282,7 @@
                 <input type="text" id="edit-description" placeholder="One line on what it is for" />
               </div>
               <div class="form-group">
-                <label for="edit-notes">Notes <span class="label-hint">only you see these; search finds them</span></label>
+                <label for="edit-notes">Notes <span class="label-hint">private</span></label>
                 <textarea id="edit-notes" rows="4" placeholder="Why it works, which model suits it, an example of a good answer…"></textarea>
               </div>
             </div>
@@ -317,7 +306,7 @@
         <header class="page-head">
           <div class="page-title-block">
             <h2>Client workspaces <span class="pro-mini">PRO</span></h2>
-            <p class="page-sub">The values you reuse for one client or project, filled in for you.</p>
+            <p class="page-sub">Saved details for each client.</p>
           </div>
           <div class="header-actions">
             <button type="button" id="btn-new-workspace" class="btn-primary">
@@ -327,9 +316,7 @@
           </div>
         </header>
         <p class="view-intro">
-          A workspace holds a name, a tone, a brief. Pick one and any field with the same name fills itself, in every prompt.
-          A value called <code>client_brief</code> also fills <code>{{@client-brief}}</code>.
-          Switch workspaces here, in the toolbar popup or from the <kbd>Alt+K</kbd> palette.
+          Pick a workspace and matching fields fill in for you. Switch here, in the popup or in the <kbd class="omni-palette-hotkey">Alt+K</kbd> palette.
         </p>
         <div class="ws-active-banner" id="ws-active-banner" hidden>
           <div class="ws-active-banner-info">
@@ -345,7 +332,7 @@
           <form class="split-editor" id="workspace-editor" hidden novalidate>
             <input type="hidden" id="ws-id" />
             <div class="ws-free-notice" id="ws-free-notice" hidden>
-              <span>Client workspaces are part of OmniPrompt Pro. Existing workspaces can be viewed, exported, backed up or deleted on Free. To edit values or activate a workspace, upgrade to Pro.</span>
+              <span>Workspaces are a Pro feature. You can still view, export and delete yours.</span>
               <button type="button" class="btn-link" id="btn-ws-free-upgrade">Learn about Pro</button>
             </div>
             <div class="form-group" id="ws-name-group">
@@ -356,7 +343,7 @@
             <div class="form-group" id="ws-fields-group">
               <div class="label-row">
                 <span class="label-strong">Values</span>
-                <span class="field-note">The name on the left matches a field or block in your prompts. Spaces and dashes count as underscores.</span>
+                <span class="field-note">The name must match a field in your prompts.</span>
               </div>
               <div class="ws-fields" id="ws-fields"></div>
               <span class="field-error" id="ws-fields-error" role="alert"></span>
@@ -391,9 +378,7 @@
           </div>
         </header>
         <p class="view-intro">
-          For example research, then draft, then review. Start a chain from the slash menu, the palette or the popup.
-          OmniPrompt inserts step 1, then waits. When you are ready, open the menu again and pick <strong>Next</strong>
-          (or type <code>//next</code>). OmniPrompt never reads the AI's reply and never sends anything by itself.
+          Start a chain from the // menu or the palette. Each time you pick <strong>Next</strong>, the next step is inserted. Nothing is sent for you.
         </p>
         <div class="split-layout">
           <div class="split-list">
@@ -401,7 +386,7 @@
           </div>
           <form class="split-editor" id="chain-editor" hidden>
             <div class="banner-upgrade-info" id="chain-free-notice" hidden>
-              <p>Stepped chains are part of OmniPrompt Pro. Existing chains are readable, exportable, and deletable on Free; editing and running require Pro.</p>
+              <p>Chains are a Pro feature. You can still view, export and delete yours.</p>
             </div>
             <input type="hidden" id="chain-id" />
             <div class="form-row">
@@ -425,7 +410,7 @@
                 <span class="label-strong">Steps <span class="req-mark" aria-hidden="true">*</span></span>
                 <span class="badge-subtle" id="chain-steps-count">0 steps</span>
               </div>
-              <span class="field-note">Each step works like a prompt: <code>{{fields}}</code>, dropdowns and <code>{{@blocks}}</code> all work. A value you type in one step fills the same field in later steps.</span>
+              <span class="field-note">Each step is a prompt. A value you fill in carries to later steps.</span>
               <span class="field-error" id="chain-steps-error" role="alert"></span>
               <div class="visually-hidden" id="chain-live-region" aria-live="polite" aria-atomic="true"></div>
               <ol class="chain-steps" id="chain-steps"></ol>
@@ -449,7 +434,7 @@
         <header class="page-head">
           <div class="page-title-block">
             <h2>Custom modifiers <span class="pro-mini">PRO</span></h2>
-            <p class="page-sub">Custom actions for your browser right-click menu (up to 30).</p>
+            <p class="page-sub">Your own right-click actions.</p>
           </div>
           <div class="header-actions">
             <button type="button" id="btn-new-modifier" class="btn-primary">
@@ -459,7 +444,7 @@
           </div>
         </header>
         <p class="view-intro">
-          The 12 built-in modifiers stay free and unchanged. Pro users can create up to 30 custom modifiers that appear in the right-click menu when you select text on any page.
+          The 12 built-in modifiers stay free. Add up to 30 of your own.
         </p>
         <div class="split-layout">
           <div class="split-list">
@@ -467,7 +452,7 @@
           </div>
           <form class="split-editor" id="modifier-editor" hidden novalidate>
             <div class="banner-upgrade-info" id="modifier-free-notice" hidden>
-              <p>Custom right-click modifiers are active with OmniPrompt Pro. Existing modifiers are viewable, exportable and deletable on Free.</p>
+              <p>Custom modifiers are a Pro feature. You can still view, export and delete yours.</p>
             </div>
             <input type="hidden" id="mod-id" />
             <div class="form-row">
@@ -510,7 +495,7 @@
         <header class="page-head">
           <div class="page-title-block">
             <h2>Site rules <span class="pro-mini">PRO</span></h2>
-            <p class="page-sub">Show relevant prompts first on specific websites (up to 50 rules).</p>
+            <p class="page-sub">Put the right prompts first on each website.</p>
           </div>
           <div class="header-actions">
             <button type="button" id="btn-new-rule" class="btn-primary">
@@ -520,7 +505,7 @@
           </div>
         </header>
         <p class="view-intro">
-          Prompts matching a site rule appear in a "For this site" group at the top of the // menu and Alt+K palette. Rules match on domain only (exact or *.wildcard). OmniPrompt checks only the hostname locally on your device.
+          Matching prompts show first in the // menu and the palette on those sites. Only the site name is checked, on your device.
         </p>
         <div class="site-rule-presets" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:14px;">
           <span class="label-strong">Presets:</span>
@@ -535,7 +520,7 @@
           </div>
           <form class="split-editor" id="rule-editor" hidden novalidate>
             <div class="banner-upgrade-info" id="rule-free-notice" hidden>
-              <p>Site rules are active with OmniPrompt Pro. Existing rules can be viewed, exported, backed up or deleted on Free.</p>
+              <p>Site rules are a Pro feature. You can still view, export and delete yours.</p>
             </div>
             <input type="hidden" id="rule-id" />
             <div class="form-group">
@@ -546,7 +531,7 @@
             <div class="form-group">
               <label for="rule-hosts">Websites / Domains <span class="req-mark" aria-hidden="true">*</span></label>
               <input type="text" id="rule-hosts" placeholder="mail.google.com, outlook.live.com, *.atlassian.net" required aria-describedby="rule-hosts-note rule-hosts-error" />
-              <span class="field-note" id="rule-hosts-note">Comma-separated hostnames. Use *.domain.com for subdomains.</span>
+              <span class="field-note" id="rule-hosts-note">Separate with commas. *.site.com covers subdomains.</span>
               <span class="field-error" id="rule-hosts-error" role="alert"></span>
               <div id="rule-host-perm-banner" class="field-note" style="display:none; color:var(--accent); margin-top:4px;">
                 <span id="rule-host-perm-text">OmniPrompt is not enabled on this site yet.</span>
@@ -576,7 +561,7 @@
         <header class="page-head">
           <div class="page-title-block">
             <h2>Settings</h2>
-            <p class="page-sub">Changes save as you make them and reach open tabs straight away.</p>
+            <p class="page-sub">Changes save automatically.</p>
           </div>
         </header>
 
@@ -586,7 +571,7 @@
             <div class="setting-item">
               <div class="setting-info">
                 <div class="setting-title">Slash menu</div>
-                <div class="setting-desc">Type this in any text box to open your prompts at the cursor.</div>
+                <div class="setting-desc">Type this in any text box to open your prompts.</div>
               </div>
               <div class="setting-control-col">
                 <label class="switch-row">
@@ -609,7 +594,7 @@
               <div class="setting-info">
                 <div class="setting-title">Search palette shortcut</div>
                 <div class="setting-desc">
-                  Opens the search overlay on any page. Click the box, then press your combination.
+                  Opens search on any page. Click the box, then press your keys.
                 </div>
                 <div class="hotkey-presets">
                   <span class="preset-label">Presets</span>
@@ -640,8 +625,7 @@
               <div class="setting-info">
                 <div class="setting-title">Browser shortcut</div>
                 <div class="setting-desc">
-                  Separate from the one above and managed by Chrome. It also opens the palette.
-                  Current default: <kbd>Ctrl+Shift+K</kbd> (<kbd>Cmd+Shift+K</kbd> on macOS).
+                  Also opens search. Set in Chrome. Default: <kbd>Ctrl+Shift+K</kbd> (<kbd>Cmd+Shift+K</kbd> on Mac).
                 </div>
               </div>
               <button type="button" id="btn-open-chrome-shortcuts" class="btn-secondary">Change in Chrome
@@ -658,7 +642,7 @@
               <div class="setting-info">
                 <div class="setting-title">Starter pack</div>
                 <div class="setting-desc">
-                  Choose which built-in pack shows in the slash menu and the palette, so the list stays short. Every pack is free.
+                  Show one pack in the menu to keep it short. All packs are free.
                 </div>
               </div>
               <div class="setting-control-col">
@@ -677,19 +661,19 @@
 
             <div class="setting-item">
               <div class="setting-info">
-                <div class="setting-title">Ranking</div>
-                <div class="setting-desc">Put favourites and prompts you use often at the top of every list.</div>
+                <div class="setting-title">Priority</div>
+                <div class="setting-desc">Choose what gets priority at the top of every list.</div>
               </div>
               <div class="setting-control-col">
                 <label class="switch-row">
-                  <span>Favourites first</span>
+                  <span>Prioritise favourites</span>
                   <span class="switch">
                     <input type="checkbox" id="setting-rank-favorites" />
                     <span class="switch-track"></span>
                   </span>
                 </label>
                 <label class="switch-row">
-                  <span>Recently used first</span>
+                  <span>Prioritise recently used</span>
                   <span class="switch">
                     <input type="checkbox" id="setting-rank-recents" />
                     <span class="switch-track"></span>
@@ -700,89 +684,6 @@
           </div>
         </div>
 
-        <div class="settings-group">
-          <h3 class="settings-group-title">Appearance</h3>
-          <div class="settings-list">
-            <div class="setting-item">
-              <div class="setting-info">
-                <div class="setting-title">Theme</div>
-                <div class="setting-desc">
-                  For the popup, this page and the menus in the page.
-                  <strong>System</strong> follows your operating system and changes with it.
-                </div>
-              </div>
-              <div class="setting-control-col">
-                <div class="theme-switch" role="group" aria-label="Colour theme">
-                  <button type="button" class="theme-opt" data-choice="light" title="Light theme" aria-label="Light theme" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg><span>Light</span></button>
-                  <button type="button" class="theme-opt" data-choice="dark" title="Dark theme" aria-label="Dark theme" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"></path></svg><span>Dark</span></button>
-                  <button type="button" class="theme-opt" data-choice="system" title="Match my system" aria-label="Match my system" aria-pressed="false"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg><span>System</span></button>
-                </div>
-                <span class="field-note" id="theme-status"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <h3 class="settings-group-title">Sync</h3>
-          <div class="settings-list">
-            <div class="setting-item">
-              <div class="setting-info">
-                <div class="setting-title">Sync with your Chrome profile</div>
-                <div class="setting-desc" id="sync-desc">
-                  Off by default, so everything stays on this computer. When on, your own prompts,
-                  folders, favourites and settings travel with your Chrome profile.
-                  Chrome allows about 100KB, so very large libraries stay local.
-                </div>
-                <div class="sync-status" id="sync-status"></div>
-              </div>
-              <label class="switch" title="Sync with your Chrome profile">
-                <input type="checkbox" id="setting-sync-enabled" aria-label="Sync with your Chrome profile" />
-                <span class="switch-track"></span>
-              </label>
-            </div>
-
-            <div class="setting-item" id="setting-folder-sync">
-              <div class="setting-info">
-                <div class="setting-title">Folder sync <span class="pro-mini">PRO</span></div>
-                <div class="setting-desc">
-                  Keep your library in a folder you choose, such as a Dropbox, OneDrive, Google Drive or iCloud Drive folder,
-                  and point OmniPrompt on your other computers at the same folder. OmniPrompt writes one file,
-                  <code>omniprompt-library.json</code>. There is no account and no server of ours; your
-                  cloud drive's own app moves the file.
-                </div>
-                <details class="setting-more">
-                  <summary>How to choose your cloud drive folder</summary>
-                  <div class="setting-desc">
-                    <p style="margin-bottom: 8px;">
-                      OmniPrompt reads and writes through your computer's local sync folder. It never asks for your cloud passwords, never connects to cloud APIs, and sends nothing over the internet.
-                    </p>
-                    <ul style="margin: 0 0 8px 18px; padding: 0; line-height: 1.6;">
-                      <li><strong>OneDrive:</strong> Pick your local OneDrive folder (usually in your user directory, e.g. <code>C:\Users\&lt;You&gt;\OneDrive</code> on Windows or <code>~/OneDrive</code> on Mac).</li>
-                      <li><strong>Google Drive:</strong> Requires <em>Google Drive for Desktop</em> set to "Stream files" (creates a virtual <code>G:\</code> drive on Windows or a CloudStorage volume on Mac) or "Mirror files" (creates a local folder in your user directory). Choose that virtual drive or mirrored folder.</li>
-                      <li><strong>Dropbox:</strong> Pick your local Dropbox directory (usually <code>C:\Users\&lt;You&gt;\Dropbox</code> or <code>~/Dropbox</code>).</li>
-                      <li><strong>iCloud Drive:</strong> On Mac, choose your iCloud Drive folder in Finder. On Windows, install iCloud for Windows and choose the local iCloud Drive folder.</li>
-                    </ul>
-                  </div>
-                </details>
-                <details class="setting-more">
-                  <summary>How it decides what wins</summary>
-                  <p class="setting-desc">
-                    OmniPrompt syncs when this page opens, after changes you make here, and when you press
-                    <strong>Sync now</strong>. Newer edits win, and a backup is taken before a deletion from
-                    another computer is applied. Settings stay per computer.
-                  </p>
-                </details>
-                <div class="sync-status" id="folder-sync-status" role="status"></div>
-              </div>
-              <div class="setting-control-col">
-                <button type="button" id="btn-folder-sync-choose" class="btn-secondary">Choose folder</button>
-                <button type="button" id="btn-folder-sync-now" class="btn-primary">Sync now</button>
-                <button type="button" id="btn-folder-sync-stop" class="btn-ghost btn-mini">Stop syncing</button>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <div class="settings-group">
           <h3 class="settings-group-title">Website access</h3>
@@ -791,7 +692,7 @@
               <div class="setting-info">
                 <div class="setting-title">Use OmniPrompt on every website</div>
                 <div class="setting-desc">
-                  Out of the box, OmniPrompt works on AI chat sites. Turn this on to use // and Alt+K in any text box, such as Gmail, Slack, Jira or Docs. Chrome will ask you to allow access to all sites. OmniPrompt works offline and has no account. It only acts when you type // or use a shortcut. It never reads your chats and never sends your prompts to us. The only request it makes is licence activation, when you enter a Pro key.
+                  Works on AI sites by default. Turn this on to use it in any text box, like Gmail or Slack. Chrome asks first. It only acts when you use it and never reads your chats.
                 </div>
                 <div class="sync-status" id="everywhere-status" role="status"></div>
               </div>
@@ -805,7 +706,7 @@
               <div class="setting-info">
                 <div class="setting-title">Enable a website</div>
                 <div class="setting-desc">
-                  Paste a link or domain (such as <code>https://linear.app</code> or <code>mycompany.internal</code>) to enable OmniPrompt there.
+                  Paste a link or domain to turn it on there, such as <code>linear.app</code>.
                 </div>
                 <div class="disabled-sites" id="enabled-sites-list"></div>
               </div>
@@ -827,8 +728,7 @@
               <div class="setting-info">
                 <div class="setting-title">Sites where OmniPrompt is off</div>
                 <div class="setting-desc">
-                  Add a hostname to silence the slash menu and the palette there. You can also
-                  switch the current site off from the toolbar popup.
+                  Turn it off on the sites you list. You can also do this from the popup.
                 </div>
                 <div class="disabled-sites" id="disabled-sites"></div>
               </div>
@@ -845,8 +745,7 @@
               <div class="setting-info">
                 <div class="setting-title">Remembered answers</div>
                 <div class="setting-desc">
-                  OmniPrompt remembers short answers, like a tone or a language, so a form starts where you left it.
-                  Long fields and anything filled from the page are never kept. They stay on this computer.
+                  Short answers, like a tone, are remembered so forms start filled. Long text is never kept. Stays on this computer.
                 </div>
               </div>
               <button type="button" id="btn-forget-remembered" class="btn-secondary">Forget them</button>
@@ -855,40 +754,79 @@
         </div>
       </section>
 
-      <!-- Backup and import -->
+      <!-- Backup, sync and import -->
       <section id="view-data" class="view-panel">
         <header class="page-head">
           <div class="page-title-block">
-            <h2>Backup &amp; import</h2>
-            <p class="page-sub">Your prompts never leave this browser unless you export or sync them.</p>
+            <h2>Backup &amp; sync</h2>
+            <p class="page-sub">Keep your library safe: sync it, restore a copy, or export a file.</p>
           </div>
         </header>
 
         <div class="settings-group">
-          <h3 class="settings-group-title">Backups</h3>
+          <h3 class="settings-group-title">Sync</h3>
+          <div class="settings-list">
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-title">Sync with your Chrome profile</div>
+                <div class="setting-desc" id="sync-desc">
+                  Off by default. Your prompts, favourites and settings follow your Chrome profile. Limit is about 100KB. For bigger libraries, use folder sync.
+                </div>
+                <div class="sync-status" id="sync-status"></div>
+              </div>
+              <label class="switch" title="Sync with your Chrome profile">
+                <input type="checkbox" id="setting-sync-enabled" aria-label="Sync with your Chrome profile" />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+
+            <div class="setting-item" id="setting-folder-sync">
+              <div class="setting-info">
+                <div class="setting-title">Folder sync <span class="pro-mini">PRO</span></div>
+                <div class="setting-desc">
+                  Keep your library in a Dropbox, OneDrive, Google Drive or iCloud folder. Pick the same folder on each computer. No account, no size limit.
+                </div>
+                <details class="setting-more">
+                  <summary>Which folder?</summary>
+                  <div class="setting-desc">
+                    <p>Pick your local sync folder, the one your cloud app already syncs on this computer. OmniPrompt saves one file there, <code>omniprompt-library.json</code>, and sends nothing over the internet.</p>
+                    <p>Google Drive: install Google Drive for Desktop first, then pick its folder.</p>
+                  </div>
+                </details>
+                <details class="setting-more">
+                  <summary>How it merges</summary>
+                  <p class="setting-desc">Syncs when this page opens and after each change. The newest edit wins. A restore point is saved before a deletion from another computer is applied.</p>
+                </details>
+                <div class="sync-status" id="folder-sync-status" role="status"></div>
+              </div>
+              <div class="setting-control-col">
+                <button type="button" id="btn-folder-sync-choose" class="btn-secondary">Choose folder</button>
+                <button type="button" id="btn-folder-sync-now" class="btn-primary">Sync now</button>
+                <button type="button" id="btn-folder-sync-stop" class="btn-ghost btn-mini">Stop syncing</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3 class="settings-group-title">Restore points</h3>
           <div class="settings-list">
             <div class="setting-item backup-item">
               <div class="setting-info">
-                <div class="setting-title">Automatic backups</div>
+                <div class="setting-title">Automatic restore points</div>
                 <div class="setting-desc">
-                  OmniPrompt keeps a copy of your own prompts, edits and favourites once a day, and before
-                  any import that replaces your library. The last 7 are kept on this computer.
-                  Uninstalling the extension removes them, so download a file backup now and then.
+                  A copy is saved once a day and before risky changes. The last 7 are kept on this computer. Uninstalling removes them, so export a file now and then.
                 </div>
                 <div class="backup-status" id="backup-status" role="status"></div>
                 <ul class="snapshot-list" id="snapshot-list"></ul>
               </div>
-              <button type="button" id="btn-snapshot-now" class="btn-secondary">Back up now</button>
+              <button type="button" id="btn-snapshot-now" class="btn-secondary">Save one now</button>
             </div>
 
             <div class="setting-item">
               <div class="setting-info">
                 <div class="setting-title">Export a file</div>
                 <div class="setting-desc" id="export-summary"></div>
-                <label class="checkbox-row">
-                  <input type="checkbox" id="export-include-library" />
-                  <span>Also include all 136 built-in prompts (a much larger file, only useful for archiving)</span>
-                </label>
               </div>
               <button type="button" id="btn-export-backup" class="btn-primary">Export JSON</button>
             </div>
@@ -902,10 +840,7 @@
               <div class="setting-info">
                 <div class="setting-title">Import prompts</div>
                 <div class="setting-desc">
-                  Reads OmniPrompt backups, plain JSON lists, AIPRM exports, CSV or TSV with a
-                  header row, <code>SKILL.md</code> skill files, Markdown where each heading is a prompt,
-                  and plain text split on <code>---</code>. Moving from Gemini Gems or custom GPTs? Paste their
-                  instructions into a text file and import it. Duplicates are skipped by title and template.
+                  Works with OmniPrompt files, JSON, AIPRM, CSV, Markdown, <code>SKILL.md</code> and plain text. Duplicates are skipped.
                 </div>
                 <label class="checkbox-row">
                   <input type="checkbox" id="import-replace-mode" />
@@ -922,12 +857,14 @@
 
         <div class="settings-group">
           <h3 class="settings-group-title">Reset</h3>
+          <details class="setting-more">
+          <summary>Restore built-ins or erase everything</summary>
           <div class="settings-list">
             <div class="setting-item">
               <div class="setting-info">
                 <div class="setting-title">Restore the built-in library</div>
                 <div class="setting-desc" id="restore-summary">
-                  Undoes your edits to built-in prompts and brings back any you deleted.
+                  Undoes your edits to built-ins and brings back deleted ones.
                 </div>
               </div>
               <button type="button" id="btn-factory-reset" class="btn-secondary">Restore built-ins</button>
@@ -937,13 +874,13 @@
               <div class="setting-info">
                 <div class="setting-title">Erase everything</div>
                 <div class="setting-desc">
-                  Deletes your prompts, folders, favourites, usage history and settings from this
-                  browser. This cannot be undone. Export first.
+                  Deletes all your prompts, favourites and settings from this browser. Cannot be undone. Export first.
                 </div>
               </div>
               <button type="button" id="btn-erase-all" class="btn-danger">Erase all my data</button>
             </div>
           </div>
+          </details>
         </div>
       </section>
 
@@ -952,47 +889,125 @@
         <header class="page-head">
           <div class="page-title-block">
             <h2>Plan</h2>
-            <p class="page-sub">Everything you have stays readable, usable and exportable on either plan.</p>
+            <p class="page-sub">Your prompts stay yours on either plan.</p>
           </div>
         </header>
 
-        <div class="plan-card" id="setting-license-card">
-          <div class="plan-summary">
-            <div class="plan-summary-head">
-              <span class="pro-tier-pill" id="license-tier-pill">Free</span>
-            </div>
-            <div class="setting-desc plan-desc" id="license-tier-desc">
-              Free includes every built-in prompt and up to <strong><span id="custom-prompt-count">0</span> / 20</strong> of your own.
-              Pro is paid once: unlimited prompts, client workspaces, saved values, stepped chains, folder sync and library tools.
-            </div>
-            <div id="license-active-details" class="license-active-details" style="display: none;">
-              <div class="license-key-masked">Licence key <code id="license-masked-key">••••••••••••••••</code></div>
-              <div class="license-status-badge">✓ Lifetime licence active. It keeps working offline.</div>
-            </div>
+        <!--
+          The plan page sells with three things only: where you are (your own
+          numbers), two plan cards with one clear button, and answers to the
+          questions people ask before paying. The full table is one click away.
+          No timers, fake discounts or invented reviews.
+        -->
+        <div class="plan-page" id="setting-license-card" data-plan="free">
 
-            <div class="license-action-col">
-              <div id="license-free-actions" class="license-actions">
-                <a href="https://dodopayments.com" target="_blank" rel="noopener" id="link-buy-pro" class="btn-primary btn-buy-pro"><span id="buy-pro-label">Get Pro</span>
-                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"></path></svg>
-                </a>
-                <div class="license-input-group">
-                  <label class="visually-hidden" for="input-license-key">Licence key</label>
-                  <input type="text" id="input-license-key" class="setting-select input-license" placeholder="Already bought? Paste your licence key" autocomplete="off" spellcheck="false" aria-describedby="license-feedback" />
-                  <button type="button" id="btn-activate-license" class="btn-secondary">Activate</button>
-                </div>
-                <span class="field-note license-feedback" id="license-feedback" role="status" aria-live="polite"></span>
-                <ul class="upgrade-trust plan-trust" aria-label="What you get with your purchase">
-                  <li>No subscription</li>
-                  <li>No account</li>
-                  <li>Lifetime updates</li>
-                </ul>
+          <!-- Free: where you are, in your own numbers -->
+          <div class="plan-usage" id="license-free-actions">
+            <div class="plan-usage-text">
+              <span class="pro-tier-pill" id="license-tier-pill">You are on Free</span>
+              <p class="plan-usage-line" id="license-tier-desc">
+                <strong><span id="custom-prompt-count">0</span> of <span id="plan-usage-limit">20</span></strong> prompts of your own used.
+              </p>
+            </div>
+            <div class="plan-usage-meter" aria-hidden="true">
+              <span class="plan-usage-fill" id="plan-usage-fill"></span>
+            </div>
+            <p class="plan-usage-proof" id="plan-usage-proof" hidden></p>
+          </div>
+
+          <!-- Free: two plan cards -->
+          <div class="plan-tiers" id="plan-tiers">
+            <article class="tier-card tier-free" aria-labelledby="tier-free-name">
+              <header class="tier-head">
+                <h3 class="tier-name" id="tier-free-name">Free</h3>
+                <p class="tier-pitch">Everything you need to start.</p>
+              </header>
+              <div class="tier-price">
+                <span class="tier-amount" id="plan-free-amount">Free</span>
+                <span class="tier-terms">forever</span>
               </div>
-              <div id="license-active-actions" style="display: none;">
-                <button type="button" id="btn-deactivate-license" class="btn-secondary btn-mini">Deactivate or change key</button>
+              <span class="tier-current" aria-disabled="true">Your current plan</span>
+              <ul class="tier-list">
+                <li>All <span id="plan-free-builtins">136</span> built-in prompts</li>
+                <li><span id="plan-free-own">20</span> prompts of your own</li>
+                <li>Slash menu, palette and right-click modifiers</li>
+                <li>Backups, export and version history</li>
+                <li>Chrome profile sync</li>
+              </ul>
+            </article>
+
+            <article class="tier-card tier-pro" aria-labelledby="tier-pro-name">
+              <span class="tier-badge">Lifetime licence</span>
+              <header class="tier-head">
+                <h3 class="tier-name" id="tier-pro-name">Pro</h3>
+                <p class="tier-pitch">For people who prompt every day.</p>
+              </header>
+              <div class="tier-price">
+                <span class="tier-amount" id="plan-pro-amount">Pro</span>
+                <span class="tier-terms"><strong>one payment</strong> no subscription</span>
               </div>
+              <a href="https://dodopayments.com" target="_blank" rel="noopener" id="link-buy-pro" class="btn-primary btn-buy-pro"><span id="buy-pro-label">Get Pro</span>
+                <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"></path></svg>
+              </a>
+              <p class="tier-lead">Everything in Free, plus:</p>
+              <!-- Filled from OmniStore.getProInfo().features. -->
+              <ul class="tier-list tier-list-pro" id="plan-pro-features"></ul>
+              <button type="button" class="tier-more" id="btn-plan-see-all" aria-controls="plan-compare-box">See all Pro features</button>
+            </article>
+          </div>
+
+          <!-- Free: the licence key, out of the way until wanted -->
+          <details class="plan-key-box" id="plan-key-box">
+            <summary>Already bought? Enter your licence key</summary>
+            <div class="license-input-group">
+              <label class="visually-hidden" for="input-license-key">Licence key</label>
+              <input type="text" id="input-license-key" class="setting-select input-license" placeholder="Paste the key from your email" autocomplete="off" spellcheck="false" aria-describedby="license-feedback" />
+              <button type="button" id="btn-activate-license" class="btn-secondary">Activate</button>
+            </div>
+            <span class="field-note license-feedback" id="license-feedback" role="status" aria-live="polite"></span>
+          </details>
+
+          <!-- Pro: what is unlocked, with a way into each part -->
+          <div class="plan-active" id="license-active-details" style="display: none;">
+            <div class="plan-active-head">
+              <span class="plan-active-check" aria-hidden="true">✓</span>
+              <div>
+                <h3 class="plan-active-title">Pro is active</h3>
+                <p class="plan-active-sub" id="plan-active-sub">Yours for life. It keeps working offline.</p>
+              </div>
+            </div>
+            <ul class="plan-active-grid" id="plan-active-features"></ul>
+            <div class="plan-active-foot" id="license-active-actions">
+              <span class="license-key-masked">Licence key <code id="license-masked-key">••••••••••••••••</code></span>
+              <button type="button" id="btn-deactivate-license" class="btn-secondary btn-mini">Deactivate or change key</button>
             </div>
           </div>
 
+          <!-- Answers to what people ask before they pay -->
+          <section class="plan-faq" id="plan-faq" aria-labelledby="plan-faq-title">
+            <h3 class="plan-section-title" id="plan-faq-title">Before you buy</h3>
+            <dl class="plan-faq-list">
+              <div class="plan-faq-item">
+                <dt>Is it really one payment?</dt>
+                <dd>Yes. You pay once and keep Pro for life, with updates. There is no subscription to cancel.</dd>
+              </div>
+              <div class="plan-faq-item">
+                <dt>Do I need an account?</dt>
+                <dd>No. Checkout is on Dodo Payments and you get a licence key by email. Paste it here. Your prompts never leave your browser.</dd>
+              </div>
+              <div class="plan-faq-item">
+                <dt>What if I stay on Free?</dt>
+                <dd>Nothing is locked or deleted. Every prompt keeps working, and you can export or back up your library at any time.</dd>
+              </div>
+              <div class="plan-faq-item">
+                <dt>Can I move Pro to another computer?</dt>
+                <dd>Yes. Deactivate the key on this page, then activate it on the other browser.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <details class="plan-compare-box" id="plan-compare-box">
+            <summary>Compare Free and Pro in full</summary>
           <table class="plan-compare" id="plan-compare">
             <caption class="visually-hidden">What Free and Pro include</caption>
             <thead>
@@ -1000,24 +1015,26 @@
             </thead>
             <tbody>
               <tr><th scope="row">Slash menu, palette, modifiers, auto-fill</th><td>✓</td><td>✓</td></tr>
-              <tr><th scope="row">Built-in prompts, including Client Work</th><td id="plan-builtins">All</td><td>All</td></tr>
+              <tr><th scope="row">All built-in prompts</th><td id="plan-builtins">All</td><td>All</td></tr>
               <tr><th scope="row">Your own prompts</th><td id="plan-free-limit">20</td><td>Unlimited</td></tr>
-              <tr><th scope="row">Import, export, automatic backups and restore</th><td>✓</td><td>✓</td></tr>
-              <tr><th scope="row">Version history</th><td>View and copy</td><td>One-click restore</td></tr>
+              <tr><th scope="row">Import, export, restore points</th><td>✓</td><td>✓</td></tr>
+              <tr><th scope="row">Version history and restore</th><td>✓</td><td>✓</td></tr>
               <tr><th scope="row">Context blocks, like <code>{{@client-brief}}</code></th><td>Inserted as written</td><td>Filled in</td></tr>
               <tr><th scope="row">Client workspaces</th><td>—</td><td>✓</td></tr>
               <tr><th scope="row">Saved value sets</th><td>—</td><td>✓</td></tr>
               <tr><th scope="row">Remembered short answers</th><td>✓</td><td>✓</td></tr>
               <tr><th scope="row">Stepped chains</th><td>—</td><td>✓</td></tr>
-              <tr><th scope="row">Folder sync (Dropbox, OneDrive, iCloud Drive)</th><td>—</td><td>✓</td></tr>
-              <tr><th scope="row">Folders, tag filters, bulk edit, tidy-up</th><td>✓</td><td>✓</td></tr>
-              <tr><th scope="row">Compare across AIs (side-by-side chats)</th><td>—</td><td>✓</td></tr>
-              <tr><th scope="row">Smart templates (conditionals, date maths, repeat blocks)</th><td>Insert only</td><td>Write &amp; save</td></tr>
-              <tr><th scope="row">Custom right-click modifiers (up to 30)</th><td>—</td><td>✓</td></tr>
-              <tr><th scope="row">Site rules (boost prompts by website)</th><td>—</td><td>✓</td></tr>
+              <tr><th scope="row">Chrome profile sync (about 100KB)</th><td>✓</td><td>✓</td></tr>
+              <tr><th scope="row">Folder sync (no size limit)</th><td>—</td><td>✓</td></tr>
+              <tr><th scope="row">Folders, tags, bulk edit, tidy-up</th><td>✓</td><td>✓</td></tr>
+              <tr><th scope="row">Compare across AIs</th><td>—</td><td>✓</td></tr>
+              <tr><th scope="row">Smart templates</th><td>Insert only</td><td>Write &amp; save</td></tr>
+              <tr><th scope="row">Custom right-click modifiers</th><td>—</td><td>✓</td></tr>
+              <tr><th scope="row">Site rules</th><td>—</td><td>✓</td></tr>
               <tr><th scope="row">Price</th><td>Free</td><td id="plan-pro-price">once</td></tr>
             </tbody>
           </table>
+          </details>
         </div>
       </section>
     </main>
@@ -1094,7 +1111,7 @@
         </button>
       </div>
       <div class="modal-body">
-        <p class="field-note" style="margin-bottom:12px;">Opens fresh chats with this prompt filled in each AI composer.</p>
+        <p class="field-note" style="margin-bottom:12px;">Opens a new chat in each AI with this prompt filled in.</p>
         <div class="form-group">
           <label class="label-strong">Choose AI targets (up to 6)</label>
           <div class="omni-compare-targets" id="opt-compare-targets" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; padding:6px 0;"></div>
@@ -1102,8 +1119,8 @@
         <div class="form-group" style="margin-top:10px;">
           <label class="label-strong">Layout</label>
           <div class="omni-compare-options" style="display:flex; gap:16px; margin-top:4px;">
-            <label class="omni-compare-opt"><input type="radio" name="opt-compare-layout" value="window" checked /> Tiled windows</label>
-            <label class="omni-compare-opt"><input type="radio" name="opt-compare-layout" value="tabs" /> Tabs in current window</label>
+            <label class="omni-compare-opt"><input type="radio" name="opt-compare-layout" value="tabs" checked /> New tabs in this window</label>
+            <label class="omni-compare-opt"><input type="radio" name="opt-compare-layout" value="window" /> Tiled windows</label>
           </div>
         </div>
         <div class="form-group" style="margin-top:10px;">
@@ -1113,8 +1130,8 @@
           </label>
         </div>
         <div class="modal-preview-section" style="margin-top:12px;">
-          <div class="modal-preview-header"><span>Prompt text</span></div>
-          <div class="modal-preview-box" id="opt-compare-preview"></div>
+          <div class="modal-preview-header"><label for="opt-compare-preview">Prompt text. Replace any [blanks] before you start.</label></div>
+          <textarea class="modal-preview-box" id="opt-compare-preview" rows="8" spellcheck="false" style="width:100%; box-sizing:border-box; resize:vertical; min-height:120px; max-height:none;"></textarea>
         </div>
         <div class="modal-warning" id="opt-compare-warning" style="display:none; color:var(--danger, #d9383a); font-size:12px; margin-top:8px;"></div>
       </div>
@@ -1201,7 +1218,7 @@
       <div class="upgrade-hero">
         <span class="upgrade-eyebrow" id="upgrade-modal-title">OmniPrompt Pro</span>
         <h3 class="upgrade-title" id="upgrade-modal-headline">Your prompt library, without limits.</h3>
-        <p class="upgrade-sub" id="upgrade-modal-reason">Unlimited prompts, client workspaces, saved values, chains and folder sync. Pay once, keep it for life.</p>
+        <p class="upgrade-sub" id="upgrade-modal-reason">Unlimited prompts, workspaces, chains and folder sync. Pay once, keep it for life.</p>
 
         <div class="upgrade-meter" id="upgrade-modal-meter" hidden>
           <div class="upgrade-meter-track"><span class="upgrade-meter-fill" id="upgrade-modal-meter-fill"></span></div>
@@ -1214,13 +1231,14 @@
       <div class="upgrade-body">
         <!-- Filled from OmniStore.getProInfo().features, so every surface lists the same things. -->
         <ul class="upgrade-benefits" id="upgrade-modal-benefits"></ul>
+        <button type="button" class="upgrade-see-all" id="btn-upgrade-modal-see-all">See everything in Pro</button>
 
         <div class="upgrade-offer">
           <div class="upgrade-price">
             <span class="upgrade-price-amount" id="upgrade-modal-price">Get Pro</span>
             <span class="upgrade-price-terms">
               <strong>one time</strong>
-              <span>Other prompt tools charge about $10 a month.</span>
+              <span>Yours for life.</span>
             </span>
           </div>
           <a href="https://dodopayments.com" target="_blank" rel="noopener" id="link-upgrade-modal-buy" class="btn-primary btn-checkout upgrade-cta">Get Pro <span aria-hidden="true">→</span></a>
@@ -1232,7 +1250,7 @@
           <p class="upgrade-fine">Secure checkout by Dodo Payments. Your licence key arrives by email.</p>
         </div>
 
-        <p class="upgrade-keep-free" id="upgrade-modal-keep-free">Free stays free: 136 built-ins, 20 of your own, backups and restore, export.</p>
+        <p class="upgrade-keep-free" id="upgrade-modal-keep-free">Free stays free: 136 built-ins, 20 of your own, backups and export.</p>
 
         <details class="upgrade-activate-box" id="upgrade-modal-key-box">
           <summary>Already bought? Enter your licence key</summary>
@@ -1247,6 +1265,32 @@
 
       <div class="upgrade-footer">
         <button type="button" class="upgrade-not-now" id="btn-upgrade-modal-cancel">Not now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deactivate licence. Shows the full key first so it can be copied before it is removed. -->
+  <div id="license-deactivate-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="license-deactivate-title">
+    <div class="modal-content modal-narrow">
+      <div class="modal-header">
+        <div class="modal-title"><span id="license-deactivate-title">Deactivate Pro on this browser?</span></div>
+        <button type="button" class="icon-btn" id="btn-close-license-deactivate" aria-label="Close">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="field-note">This browser goes back to Free. Your prompts stay. Copy your key first so you can activate it again, here or on another browser.</p>
+        <div class="form-group">
+          <label for="license-deactivate-key">Your licence key</label>
+          <div class="license-input-group">
+            <input type="text" id="license-deactivate-key" class="input-license" readonly spellcheck="false" />
+            <button type="button" class="btn-secondary" id="btn-license-deactivate-copy">Copy key</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-license-deactivate-cancel">Keep Pro</button>
+        <button type="button" class="btn-danger" id="btn-license-deactivate-confirm">Deactivate</button>
       </div>
     </div>
   </div>
@@ -1280,7 +1324,7 @@
         </button>
       </div>
       <div class="modal-body">
-        <p class="field-note">Suggestions only. Tick what you want to delete. A backup is taken first, so you can undo it from Backup &amp; import.</p>
+        <p class="field-note">Tick what to delete. A restore point is saved first, so you can undo it.</p>
         <div id="tidy-sections"></div>
       </div>
       <div class="modal-footer">
